@@ -1,0 +1,21 @@
+{
+  "frete": [
+    {
+      "cepori": "00000000",
+      "cepdes": "00000000",
+      "peso": 0.3,
+      "modalidade": 3,
+      "vldeclarado": 55.00,
+      "cnpj": "00000000000000",
+      "conta": "000000",
+      "contrato": "000000",
+      "tpentrega": "D",
+      "tpseguro": "N",
+      "vlcoleta": 0.0
+    }
+  ],
+  "error": {
+    "id": -1,
+    "descricao": "frete[0].cepdes CEP de destino sem cobertura (texto ilustrativo do simulador)"
+  }
+}

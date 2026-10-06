@@ -1,0 +1,7 @@
+{
+  "status": "Erro ao inserir solicitacao.",
+  "erro": {
+    "descricao": "Destino fora da area de cobertura",
+    "id": -2
+  }
+}

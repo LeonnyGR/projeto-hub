@@ -1,0 +1,8 @@
+{
+  "status": "Erro ao realizar o cancelamento",
+  "erro": {
+    "descricao": "Erro Validacao",
+    "detalhe": "Pedido já está cancelado.",
+    "id": -2
+  }
+}

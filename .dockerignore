@@ -1,0 +1,38 @@
+# Segredos e ambiente: nunca entram na imagem
+.env
+.env.*
+!.env.example
+!.env.docker.example
+auth.json
+
+# VCS / IDE
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+.editorconfig
+
+# Dependencias e artefatos (vendor e instalado dentro do build)
+vendor
+node_modules
+public/build
+public/hot
+bootstrap/cache/*.php
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/*
+.phpunit.cache
+.phpunit.result.cache
+
+# Nao necessarios em runtime
+docs
+tests
+docker/scripts
+docker/postgres
+docker/redis
+*.pdf
+*.md
+phpunit.xml

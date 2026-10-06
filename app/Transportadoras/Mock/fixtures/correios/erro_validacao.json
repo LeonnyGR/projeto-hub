@@ -1,0 +1,8 @@
+{
+  "msgs": [
+    "CEP-084: CEP no formato incorreto. 8 dígitos. Exemplo: 70902900"
+  ],
+  "date": "2022-03-19T11:06:05",
+  "path": "uri=/cep/v1/enderecos/01001-001",
+  "cause": "ConstraintViolationException: consultaCEP.cep: CEP-084: CEP no formato incorreto. 8 dígitos. Exemplo: 70902900"
+}

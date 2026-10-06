@@ -1,0 +1,19 @@
+{
+  "frete": [
+    {
+      "cepdes": "00000000",
+      "cepori": "00000000",
+      "conta": "000000",
+      "contrato": null,
+      "frap": "N",
+      "cnpj": "00000000000000",
+      "modalidade": 3,
+      "peso": 0.3,
+      "prazo": 5,
+      "tpentrega": "D",
+      "tpseguro": "N",
+      "vldeclarado": 55.00,
+      "vltotal": 7.50
+    }
+  ]
+}

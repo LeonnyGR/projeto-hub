@@ -1,0 +1,1081 @@
+{
+  "info": {
+    "name": "Frete Hub",
+    "description": "API de frete (Jadlog e Correios).\n\nComo usar:\n1. Em Variables (aba da collection), preencha `api_key` com a chave do B2C (comando `cliente:create`) e confira `base_url`.\n2. As credenciais das transportadoras sao cadastradas pela TI por comando (`transportadora:configurar`); a pasta 1 so confere. Rode as pastas na ordem: 1, 2 (seller), 3 Consultas, 4 Cotações, 5 Remessas, 6 Devoluções.\n3. As variáveis `seller_id`, `cotacao_id`, `remessa_id` etc. se preenchem sozinhas. Para usar outro seller, troque `seller_id`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://devb:8090"
+    },
+    {
+      "key": "api_key",
+      "value": ""
+    },
+    {
+      "key": "seller_id",
+      "value": ""
+    },
+    {
+      "key": "codigo_externo",
+      "value": ""
+    },
+    {
+      "key": "cep_origem",
+      "value": "01310100"
+    },
+    {
+      "key": "cep_destino",
+      "value": "20040020"
+    },
+    {
+      "key": "cotacao_id",
+      "value": ""
+    },
+    {
+      "key": "transportadora",
+      "value": ""
+    },
+    {
+      "key": "servico_codigo",
+      "value": ""
+    },
+    {
+      "key": "remessa_id",
+      "value": ""
+    },
+    {
+      "key": "devolucao_id",
+      "value": ""
+    },
+    {
+      "key": "idempotency_key",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Saúde",
+      "description": "",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/up",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "up"
+              ]
+            },
+            "description": "Mostra se a API está no ar. Não precisa de chave e não consulta o banco.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API no ar', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 - Transportadoras do B2C (so consulta)",
+      "description": "As credenciais das transportadoras (token, senha, cartao de postagem) so entram no sistema por comando, nunca por API.",
+      "item": [
+        {
+          "name": "Listar transportadoras cadastradas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras"
+              ]
+            },
+            "description": "Mostra as transportadoras cadastradas para o B2C (sem token nem senha). O cadastro NAO e feito por API: a TI roda no servidor `docker/scripts/artisan.sh transportadora:configurar jadlog` (e `correios`). Se a lista vier vazia, faca isso antes de cotar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 - Sellers",
+      "description": "",
+      "item": [
+        {
+          "name": "Criar seller",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers"
+              ]
+            },
+            "description": "Cadastra o seller. O seller NAO recebe chave nem contrato: quem chama a API e o B2C e o contrato com as transportadoras e dele. `codigo_externo` e o id do seller no B2C (se repetir, a API responde 409 com o id que ja existe).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Loja Exemplo\",\n  \"codigo_externo\": \"{{codigo_externo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('codigo_externo', 'postman-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Seller criado (201)', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('seller_id', r.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar seller",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Listar sellers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Desabilitar seller",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}"
+              ]
+            },
+            "description": "Seller desabilitado nao cota nem cria remessa. Rode 'Habilitar seller' em seguida.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativo\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Habilitar seller",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Consultas",
+      "description": "",
+      "item": [
+        {
+          "name": "Endereço por CEP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/enderecos/01001000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "enderecos",
+                "01001000"
+              ]
+            },
+            "description": "Consulta o ViaCEP (com cache de 7 dias). Aceita 01001000 ou 01001-000. Não depende de seller."
+          }
+        },
+        {
+          "name": "Pontos de retirada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/pontos-retirada?cep=02031100&tipos=LOCKER,PUBLICO,JADLOG",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "pontos-retirada"
+              ],
+              "query": [
+                {
+                  "key": "cep",
+                  "value": "02031100"
+                },
+                {
+                  "key": "tipos",
+                  "value": "LOCKER,PUBLICO,JADLOG"
+                }
+              ]
+            },
+            "description": "Pontos de retirada perto do CEP, de TODAS as transportadoras ativas que oferecem isso (hoje, a Jadlog; cada ponto traz o campo `transportadora`). Opcional: `transportadora=jadlog` para consultar so uma; `tipos` (cada transportadora usa os que conhece). Se uma transportadora falhar, ela aparece em `falhas` e as outras continuam."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Cotações",
+      "description": "",
+      "item": [
+        {
+          "name": "Cotar frete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "Cota em todas as transportadoras do seller ao mesmo tempo. Valores em centavos. A cotação vale 15 minutos. `falhas` lista quem não respondeu (ou não atende o CEP).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"{{cep_destino}}\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Cotação criada (201)', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('cotacao_id', r.data.id);",
+                  "if (r.data.opcoes.length > 0) {",
+                  "    // guarda a opção mais barata para usar em \"Criar remessa\"",
+                  "    pm.collectionVariables.set('transportadora', r.data.opcoes[0].transportadora);",
+                  "    pm.collectionVariables.set('servico_codigo', r.data.opcoes[0].servico_codigo);",
+                  "}",
+                  "pm.test('Opções vieram ordenadas do mais barato ao mais caro', () => {",
+                  "    const v = r.data.opcoes.map(o => o.valor_centavos);",
+                  "    pm.expect(v).to.eql([...v].sort((a, b) => a - b));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar cotação",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes/{{cotacao_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes",
+                "{{cotacao_id}}"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Remessas",
+      "description": "",
+      "item": [
+        {
+          "name": "Criar remessa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas"
+              ]
+            },
+            "description": "Cria a remessa na transportadora com a opção escolhida na cotação (rode 'Cotar frete' antes). A cada envio desta chamada o Postman gera uma Idempotency-Key nova.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Seller Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('idempotency_key', 'postman-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Remessa criada (201) ou repetida (200)', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "pm.collectionVariables.set('remessa_id', r.data.id);",
+                  "pm.test('Status criada', () => pm.expect(r.data.status).to.eql('criada'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar remessa (repetir a mesma chamada)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas"
+              ]
+            },
+            "description": "Repete 'Criar remessa' com a MESMA Idempotency-Key: a API devolve a remessa original e não cria outra na transportadora.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Seller Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Devolveu a remessa que já existia (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Marcada como repetida', () => pm.response.to.have.header('Idempotent-Replayed', 'true'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar remessa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas",
+                "{{remessa_id}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Etiqueta (PDF)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}/etiqueta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas",
+                "{{remessa_id}}",
+                "etiqueta"
+              ]
+            },
+            "description": "No Postman use a aba Preview para ver o PDF. Nos Correios a etiqueta é gerada na primeira consulta."
+          }
+        },
+        {
+          "name": "Despachar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}/despachar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas",
+                "{{remessa_id}}",
+                "despachar"
+              ]
+            },
+            "description": "O seller avisa que entregou o pacote à transportadora (só muda o status)."
+          }
+        },
+        {
+          "name": "Cancelar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}/cancelar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas",
+                "{{remessa_id}}",
+                "cancelar"
+              ]
+            },
+            "description": "Só funciona com a remessa criada ou despachada."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Devoluções",
+      "description": "",
+      "item": [
+        {
+          "name": "Criar devolução",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "dev-{{idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/devolucoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "devolucoes"
+              ]
+            },
+            "description": "Só vale para remessa já ENTREGUE. Até o rastreio ficar pronto, o esperado é 422 `remessa_nao_entregue`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remessa_id\": \"{{remessa_id}}\",\n  \"motivo\": \"Produto com defeito\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('devolucao_id', r.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar devolução",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/devolucoes/{{devolucao_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "devolucoes",
+                "{{devolucao_id}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Etiqueta da devolução (PDF)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/devolucoes/{{devolucao_id}}/etiqueta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "devolucoes",
+                "{{devolucao_id}}",
+                "etiqueta"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 - Cenários do simulador",
+      "description": "Só funcionam com TRANSPORTADORAS_MODO=mock. O cenário é escolhido pelo CEP de destino.",
+      "item": [
+        {
+          "name": "Cotar para 22222222 - sem cobertura",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "Esperado: sem opções e `falhas` com `sem_cobertura`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"22222222\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cotar para 33333333 - timeout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "Esperado: sem opções e `falhas` com `sem_resposta`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"33333333\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cotar para 44444444 - erro 500 da transportadora",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "Esperado: `falhas` com `erro_na_transportadora`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"44444444\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cotar para 55555555 - resposta quebrada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "Esperado: `falhas` com `resposta_invalida`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"55555555\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cotar para 66666666 - credencial recusada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "Esperado: `falhas` com `credencial_invalida`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"66666666\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8 - Erros comuns",
+      "description": "",
+      "item": [
+        {
+          "name": "Sem API key (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes/{{cotacao_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes",
+                "{{cotacao_id}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar remessa sem Idempotency-Key (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "remessas"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Seller Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cotar com campo desconhecido (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sellers",
+                "{{seller_id}}",
+                "cotacoes"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"{{cep_destino}}\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ],\n  \"campo_que_nao_existe\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

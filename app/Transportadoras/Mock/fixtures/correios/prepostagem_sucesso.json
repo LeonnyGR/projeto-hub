@@ -1,0 +1,24 @@
+{
+  "id": "PRgddyJTC0QMyNqlCX7w0H9A",
+  "codigoObjeto": "AA123456789BR",
+  "remetente": {
+    "id": 6124155,
+    "nome": "Exemplo Nome do Remetente",
+    "dddTelefone": "61",
+    "telefone": "32976637",
+    "dddCelular": "11",
+    "celular": "982611272",
+    "email": "exemplo@correios.com.br",
+    "cpfCnpj": "44347596120",
+    "endereco": {
+      "id": 6290747,
+      "cep": "70002900",
+      "logradouro": "Rua 3 Chao 92 A",
+      "numero": "10",
+      "complemento": "Complemento Endereco",
+      "bairro": "SBN",
+      "cidade": "Brasilia",
+      "uf": "DF"
+    }
+  }
+}

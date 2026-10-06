@@ -1,0 +1,20 @@
+{
+  "codigo": "123456789",
+  "shipmentId": "00000000000000",
+  "status": "Solicitacao inserida com sucesso.",
+  "etiqueta": {
+    "arquivo": "",
+    "volume": [
+      {
+        "codbarra": "00000000000000$001200000000",
+        "lastMile": "30",
+        "posicao": "00",
+        "prioridade": 3,
+        "rota": "SP-SJK-0952-SAO03",
+        "rua": "A",
+        "seqVolume": 1,
+        "unidadeDestino": "CO CARAGUATATUBA 01"
+      }
+    ]
+  }
+}

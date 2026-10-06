@@ -1,0 +1,23 @@
+{
+  "coProduto": "04162",
+  "pcBase": "9,73",
+  "pcBaseGeral": "10,14",
+  "peVariacao": "0,0000",
+  "pcReferencia": "10,14",
+  "vlBaseCalculoImposto": "17,93",
+  "nuRequisicao": "1",
+  "inPesoCubico": "N",
+  "psCobrado": "300",
+  "servicoAdicional": [
+    { "coServAdicional": "019", "tpServAdicional": "V", "pcServicoAdicional": "0,79" },
+    { "coServAdicional": "001", "tpServAdicional": "A", "pcServicoAdicional": "7,00" }
+  ],
+  "peAdValorem": "0,0100",
+  "vlSeguroAutomatico": "21,00",
+  "qtAdicional": "0",
+  "pcFaixa": "10,14",
+  "pcFaixaVariacao": "10,14",
+  "pcProduto": "10,14",
+  "pcTotalServicosAdicionais": "7,79",
+  "pcFinal": "17,93"
+}
