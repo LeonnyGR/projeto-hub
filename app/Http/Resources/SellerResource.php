@@ -15,6 +15,7 @@ class SellerResource extends JsonResource
             'id' => $this->id,
             'nome' => $this->nome,
             'codigo_externo' => $this->codigo_externo,
+            'cep_origem' => $this->cep_origem,
             'ativo' => $this->ativo,
             'criado_em' => $this->created_at->toIso8601String(),
         ];

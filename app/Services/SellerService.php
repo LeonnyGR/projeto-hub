@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class SellerService
 {
     /**
-     * @param  array  $dados  nome e, opcionalmente, codigo_externo
+     * @param  array  $dados  nome, cep_origem e, opcionalmente, codigo_externo
      *
      * @throws ErroDeNegocio 409 se este cliente ja tem seller com o mesmo codigo_externo (o id dele vem em "detalhes")
      */
@@ -28,7 +28,7 @@ class SellerService
         }
 
         try {
-            $seller = $cliente->sellers()->create(['nome' => $dados['nome'], 'codigo_externo' => $codigo, 'ativo' => true]);
+            $seller = $cliente->sellers()->create(['nome' => $dados['nome'], 'codigo_externo' => $codigo, 'cep_origem' => $dados['cep_origem'], 'ativo' => true]);
         } catch (UniqueConstraintViolationException) {
             // duas chamadas ao mesmo tempo com o mesmo codigo_externo
             throw $this->jaExiste($cliente->sellers()->where('codigo_externo', $codigo)->firstOrFail());
@@ -50,19 +50,20 @@ class SellerService
 
     /**
      * Cadastra ou atualiza as credenciais do cliente da API (B2C) com uma transportadora
-     * (chamado pelo comando transportadora:configurar). Todos os sellers do cliente passam a usar estes dados.
+     * (chamado pela API, PUT /transportadoras/{t}, e pelo comando transportadora:configurar). Todos os sellers do cliente passam a usar estes dados.
      * Os dados secretos ficam criptografados.
      */
     public function configurarTransportadora(ClienteApi $cliente, string $transportadora, array $dados): CredencialTransportadora
     {
-        $credencial = $cliente->credenciais()->updateOrCreate(
-            ['transportadora' => $transportadora],
-            [
-                'ativa' => $dados['ativa'] ?? true,
-                'credenciais' => $dados['credenciais'],
-                'configuracao' => $dados['configuracao'],
-            ],
-        );
+        // Campos que nao vieram (ex.: edicao sem reenviar o segredo, ou sem "ativa") ficam como estavam.
+        $campos = ['configuracao' => $dados['configuracao']];
+        foreach (['credenciais', 'ativa'] as $campo) {
+            if (array_key_exists($campo, $dados)) {
+                $campos[$campo] = $dados[$campo];
+            }
+        }
+
+        $credencial = $cliente->credenciais()->updateOrCreate(['transportadora' => $transportadora], $campos + ['ativa' => true]);
 
         // O log diz o que mudou, nunca o conteudo (tem segredo).
         Log::info('Transportadora configurada', ['cliente_api_id' => $cliente->id, 'transportadora' => $transportadora]);

@@ -17,7 +17,7 @@ class Seller extends Model
 
     protected $table = 'sellers';
 
-    protected $fillable = ['nome', 'codigo_externo', 'ativo'];
+    protected $fillable = ['nome', 'codigo_externo', 'cep_origem', 'ativo'];
 
     protected function casts(): array
     {

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Validator;
 
 /**
  * Cadastra as credenciais e a configuracao do B2C com uma transportadora (token, cartao de postagem, tomador...).
- * So existe por comando (e nao por API) de proposito: sao dados sensiveis, que mudam raramente.
+ * Mesmo cadastro da API (PUT /transportadoras/{t}), para quem prefere o terminal.
  * O que se digita em campo secreto nao aparece na tela nem fica no historico do terminal.
  */
 class ConfigurarTransportadora extends ComandoDeCliente

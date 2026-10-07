@@ -382,7 +382,8 @@ throw new ErroDeNegocio('cotacao_expirada', 'A cotacao expirou. Faca uma nova.',
 ```
 Um código (para máquinas), uma mensagem (para pessoas) e o status HTTP. Qualquer service pode lançar; a seção 13 mostra como vira resposta.
 
-### Credenciais das transportadoras (só por comando)
+### Credenciais das transportadoras (API e comando)
+Pela API: `PUT /transportadoras/{t}` ([TransportadoraController](../app/Http/Controllers/TransportadoraController.php), regras vindas de `Classe::regras()` no [TransportadoraRequest](../app/Http/Requests/TransportadoraRequest.php)) e `PATCH` para ligar/desligar; as duas formas chamam o mesmo `SellerService::configurarTransportadora`. Pelo terminal:
 [ConfigurarTransportadora.php](../app/Console/Commands/ConfigurarTransportadora.php#L24) (`transportadora:configurar`):
 1. acha a classe da transportadora em `Transportadoras::LISTA`;
 2. percorre `Classe::perguntas()` e faz cada pergunta (`secret()` esconde o que você digita);

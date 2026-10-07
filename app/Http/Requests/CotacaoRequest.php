@@ -10,8 +10,11 @@ class CotacaoRequest extends ApiFormRequest
     protected function prepareForValidation(): void
     {
         foreach (['cep_origem', 'cep_destino'] as $campo) {
-            if (is_string($this->input($campo))) {
-                $this->merge([$campo => preg_replace('/\D/', '', $this->input($campo))]);
+            $cep = is_string($this->input($campo)) ? preg_replace('/\D/', '', $this->input($campo)) : '';
+
+            // Sem nenhum numero ("abc") mantemos o valor original para a validacao reclamar dele.
+            if ($cep !== '') {
+                $this->merge([$campo => $cep]);
             }
         }
     }
@@ -21,7 +24,8 @@ class CotacaoRequest extends ApiFormRequest
         $max = config('frete.entrada');
 
         return [
-            'cep_origem' => ['required', 'string', 'regex:/^\d{8}$/'],
+            // Opcional: sem ele, vale o cep_origem cadastrado no seller.
+            'cep_origem' => ['nullable', 'string', 'regex:/^\d{8}$/'],
             'cep_destino' => ['required', 'string', 'regex:/^\d{8}$/'],
             'valor_declarado_centavos' => ['required', 'integer', 'min:0', 'max:'.$max['max_valor_declarado_centavos']],
             'volumes' => ['required', 'array', 'min:1', 'max:'.$max['max_volumes']],

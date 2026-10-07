@@ -103,8 +103,8 @@
       ]
     },
     {
-      "name": "1 - Transportadoras do B2C (so consulta)",
-      "description": "As credenciais das transportadoras (token, senha, cartao de postagem) so entram no sistema por comando, nunca por API.",
+      "name": "1 - Transportadoras do B2C",
+      "description": "Cadastro do contrato do B2C com as transportadoras. Token e senha nunca voltam nas respostas.",
       "item": [
         {
           "name": "Listar transportadoras cadastradas",
@@ -122,7 +122,7 @@
                 "transportadoras"
               ]
             },
-            "description": "Mostra as transportadoras cadastradas para o B2C (sem token nem senha). O cadastro NAO e feito por API: a TI roda no servidor `docker/scripts/artisan.sh transportadora:configurar jadlog` (e `correios`). Se a lista vier vazia, faca isso antes de cotar."
+            "description": "Mostra as transportadoras cadastradas para o B2C (sem token nem senha). Se a lista vier vazia, cadastre com o PUT abaixo antes de cotar."
           },
           "event": [
             {
@@ -131,6 +131,86 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar/atualizar Jadlog",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"credenciais\": {\n    \"token\": \"token-da-jadlog\"\n  },\n  \"configuracao\": {\n    \"tomador\": {\n      \"nome\": \"Bartofil Comercio Ltda\",\n      \"documento\": \"12345678000195\",\n      \"telefone\": \"1133334444\",\n      \"endereco\": {\n        \"cep\": \"01001000\",\n        \"logradouro\": \"Praca da Se\",\n        \"numero\": \"1\",\n        \"bairro\": \"Se\",\n        \"cidade\": \"Sao Paulo\",\n        \"uf\": \"SP\"\n      }\n    },\n    \"cod_cliente\": \"000123\",\n    \"tipo_coleta\": \"K\",\n    \"servicos\": [\n      {\n        \"codigo\": \"3\",\n        \"nome\": \"Package\"\n      },\n      {\n        \"codigo\": \"0\",\n        \"nome\": \"Expresso\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/jadlog",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "jadlog"
+              ]
+            },
+            "description": "Cadastra (201) ou substitui (200) a Jadlog. Sem 'credenciais', mantem as ja salvas."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 ou 200', () => pm.expect(pm.response.code).to.be.oneOf([201,200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar/atualizar Correios",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"credenciais\": {\n    \"usuario\": \"usuario-correios\",\n    \"senha\": \"senha-secreta\",\n    \"cartao_postagem\": \"0012345678\"\n  },\n  \"configuracao\": {\n    \"contrato\": \"9912345678\",\n    \"servicos\": [\n      {\n        \"codigo\": \"03220\",\n        \"nome\": \"SEDEX\"\n      },\n      {\n        \"codigo\": \"04669\",\n        \"nome\": \"PAC\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/correios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "correios"
+              ]
+            },
+            "description": "Cadastra (201) ou substitui (200) os Correios. Sem 'credenciais', mantem as ja salvas."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 ou 200', () => pm.expect(pm.response.code).to.be.oneOf([201,200]));"
                 ]
               }
             }
@@ -166,7 +246,7 @@
             "description": "Cadastra o seller. O seller NAO recebe chave nem contrato: quem chama a API e o B2C e o contrato com as transportadoras e dele. `codigo_externo` e o id do seller no B2C (se repetir, a API responde 409 com o id que ja existe).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nome\": \"Loja Exemplo\",\n  \"codigo_externo\": \"{{codigo_externo}}\"\n}",
+              "raw": "{\n  \"nome\": \"Loja Exemplo\",\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"codigo_externo\": \"{{codigo_externo}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

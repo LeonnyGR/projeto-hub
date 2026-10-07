@@ -9,6 +9,7 @@ use App\Http\Controllers\PontoRetiradaController;
 use App\Http\Controllers\RemessaController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\TransportadoraController;
+use App\Transportadoras\Transportadoras;
 use Illuminate\Support\Facades\Route;
 
 // Todas as rotas daqui ficam sob /api/v1 e exigem a chave de API do cliente (o B2C).
@@ -17,9 +18,13 @@ Route::middleware('auth.cliente')->group(function () {
     // Consulta de CEP (nao depende de seller)
     Route::get('enderecos/{cep}', [EnderecoController::class, 'show'])->middleware('throttle:consultas');
 
-    // Transportadoras cadastradas para o B2C (so consulta, sem segredos). O cadastro e feito por comando:
-    // docker/scripts/artisan.sh transportadora:configurar jadlog
+    // Transportadoras do B2C: valem para todos os sellers. As respostas nunca trazem segredo (token, senha).
+    // (O comando transportadora:configurar faz o mesmo cadastro pelo terminal.)
     Route::get('transportadoras', [TransportadoraController::class, 'index'])->middleware('throttle:cadastros');
+    Route::put('transportadoras/{transportadora}', [TransportadoraController::class, 'update'])
+        ->whereIn('transportadora', Transportadoras::codigos())->middleware('throttle:cadastros');
+    Route::patch('transportadoras/{transportadora}', [TransportadoraController::class, 'ativar'])
+        ->whereIn('transportadora', Transportadoras::codigos())->middleware('throttle:cadastros');
 
     // Cadastro de sellers
     Route::get('sellers', [SellerController::class, 'index'])->middleware('throttle:cadastros');

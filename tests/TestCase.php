@@ -57,7 +57,7 @@ abstract class TestCase extends BaseTestCase
 
         $cliente ??= $this->clienteDoTeste;
 
-        return [$cliente->sellers()->create(['nome' => $nome, 'ativo' => true]), $this->chaveDoCliente];
+        return [$cliente->sellers()->create(['nome' => $nome, 'cep_origem' => '01310100', 'ativo' => true]), $this->chaveDoCliente];
     }
 
     /** URL de uma rota do seller: /api/v1/sellers/{id}/caminho */

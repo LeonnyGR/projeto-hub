@@ -24,10 +24,13 @@ class CotacaoService
     {
     }
 
-    /** @param array $dados cep_origem, cep_destino, valor_declarado_centavos, volumes[] (ja validados) */
+    /** @param array $dados cep_origem (opcional), cep_destino, valor_declarado_centavos, volumes[] (ja validados) */
     public function cotar(Seller $seller, array $dados): Cotacao
     {
         $seller->exigirAtivo();
+
+        // Sem CEP na cotacao, sai do CEP cadastrado no seller.
+        $dados['cep_origem'] ??= $seller->cep_origem;
 
         $credenciais = $seller->credenciais()->where('ativa', true)->get();
 

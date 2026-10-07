@@ -40,6 +40,19 @@ it('aceita CEP com hifen e guarda so os numeros', function () {
         ->assertJsonPath('data.cep_destino', '20040020');
 });
 
+it('sem cep_origem na cotacao usa o do seller; se vier, vale o da cotacao', function () {
+    [$seller, $chave] = $this->criarSellerComAsDuas();
+    $seller->update(['cep_origem' => '70902000']);
+    $dados = $this->dadosDeCotacao();
+    unset($dados['cep_origem']);
+
+    $this->postJson("/api/v1/sellers/{$seller->id}/cotacoes", $dados, $this->auth($chave))
+        ->assertCreated()->assertJsonPath('data.cep_origem', '70902000');
+
+    $this->postJson("/api/v1/sellers/{$seller->id}/cotacoes", $dados + ['cep_origem' => '01310100'], $this->auth($chave))
+        ->assertCreated()->assertJsonPath('data.cep_origem', '01310100');
+});
+
 it('uma transportadora com problema nao derruba a cotacao', function () {
     [$seller, $chave] = $this->criarSeller();
     $this->configurarJadlog($seller, token: 'invalido'); // Jadlog vai responder 401

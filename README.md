@@ -24,7 +24,7 @@ Cliente final ──► B2C (site/app) ──► seu backend ──► Frete Hub
 - **O seller não tem chave nem contrato.** Quando o cliente escolhe o seller no B2C, o backend do B2C chama a API
   informando o seller **na URL**: `/api/v1/sellers/{seller_id}/cotacoes`.
 - **O contrato com as transportadoras é do B2C (Bartofil)**: token da Jadlog, cartão de postagem dos Correios.
-  A TI cadastra esses dados **uma vez, por comando** (nunca por API) e eles valem para todos os sellers. O que muda de um seller para outro é só o **remetente** da remessa
+  Esses dados são cadastrados **uma vez, por API** (`PUT /transportadoras/{t}`, é o que a tela de cadastro chama) ou pelo terminal, e valem para todos os sellers. O que muda de um seller para outro é só o **remetente** da remessa
   (nome, documento e endereço do lojista). Quem **paga o frete** é sempre o titular do contrato.
 - Para um novo lojista entrar, basta o B2C chamar `POST /sellers`. Nada para configurar no servidor.
 
@@ -118,11 +118,27 @@ docker/scripts/artisan.sh cliente:disable <id-do-cliente>    # bloqueia todas as
 
 ## 3. Cadastrar as transportadoras e os sellers
 
-### 3.1 Transportadoras: pela TI, por comando (uma vez só)
+### 3.1 Transportadoras: por API (ou por comando)
 
 O contrato com a Jadlog e com os Correios é feito **com as transportadoras** (comercial, Meu Correios, catálogo dos Correios).
-Aqui só guardamos uma cópia **criptografada** dos dados que elas entregaram. Isso é feito **por comando, não por API**,
-de propósito: são dados sensíveis, que mudam raramente, e a chave usada todos os dias pelo B2C não deve poder trocá-los.
+Aqui só guardamos uma cópia **criptografada** dos dados que elas entregaram. O cadastro vale para **todos** os sellers do B2C.
+
+**Por API** (é o que a tela de cadastro deve chamar):
+
+```bash
+curl -s -X PUT $URL/transportadoras/correios -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{
+  "credenciais":  { "usuario": "meu-usuario", "senha": "minha-senha", "cartao_postagem": "0012345678" },
+  "configuracao": { "contrato": "9912345678", "servicos": [ {"codigo": "03220", "nome": "SEDEX"}, {"codigo": "04669", "nome": "PAC"} ] }
+}'
+```
+
+- `PUT /transportadoras/{jadlog|correios}`: cadastra (**201**) ou substitui (**200**). Os campos de cada transportadora estão nas tabelas abaixo
+  (`credenciais` = segredos, `configuracao` = o resto). Dados inválidos dão **422** e nada é salvo.
+- **Para editar sem redigitar o segredo**, mande só `configuracao`: as `credenciais` já salvas são mantidas.
+- `PATCH /transportadoras/{t}` com `{"ativa": false}` tira a transportadora das cotações (e `true` volta a usar), sem apagar os dados.
+- `GET /transportadoras` lista o que está cadastrado. **Token e senha nunca voltam pela API**: só `credenciais_cadastradas: true`.
+
+**Pelo terminal** (mesmo cadastro, para a TI):
 
 ```bash
 docker/scripts/artisan.sh transportadora:configurar jadlog
@@ -154,7 +170,7 @@ docker/scripts/artisan.sh transportadora:ativar jadlog --desativar   # tira a Ja
 docker/scripts/artisan.sh transportadora:ativar jadlog               # volta a usar
 ```
 
-Pela API só dá para **consultar** o que está cadastrado (sem segredos):
+Pela API, para consultar o que está cadastrado (sem segredos):
 
 ```bash
 URL=http://127.0.0.1:8090/api/v1
@@ -170,20 +186,22 @@ Cada lojista entra por `POST /sellers`. Não precisa de chave nem de cadastro de
 
 ```bash
 curl -s -X POST $URL/sellers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"nome": "Loja do João", "codigo_externo": "b2c-123"}'
+  -d '{"nome": "Loja do João", "cep_origem": "01310-100", "codigo_externo": "b2c-123"}'
 ```
 
 ```json
-{ "data": { "id": "01a11213-4764-722b-a802-4b3be85140cd", "nome": "Loja do João", "codigo_externo": "b2c-123", "ativo": true } }
+{ "data": { "id": "01a11213-4764-722b-a802-4b3be85140cd", "nome": "Loja do João", "codigo_externo": "b2c-123", "cep_origem": "01310100", "ativo": true } }
 ```
 
 - **Guarde o `id`**: é o `seller_id` que vai na URL de todas as outras chamadas.
+- `cep_origem` é o CEP de onde o seller despacha (obrigatório). Nas cotações, `cep_origem` passa a ser opcional: sem ele, vale o do seller;
+  se o seller despacha de outro lugar, basta mandar o `cep_origem` na cotação.
 - `codigo_externo` é o id desse lojista no B2C. É opcional, mas recomendado: se a chamada for repetida, a API responde
   **409 `seller_ja_existe`** com o `seller_id` que já existe, em vez de criar um segundo cadastro.
 - **O seller não recebe chave nenhuma**, e **não precisa cadastrar transportadora**: já nasce usando as credenciais do B2C.
 
 Outras chamadas de seller: `GET /sellers` (lista, com paginação), `GET /sellers/{id}`,
-`PATCH /sellers/{id}` (muda `nome` ou `ativo`).
+`PATCH /sellers/{id}` (muda `nome`, `cep_origem` ou `ativo`).
 Seller com `ativo: false` não cota nem cria remessa (os dados continuam consultáveis).
 Um cliente da API só enxerga os sellers que ele mesmo cadastrou.
 
@@ -408,7 +426,7 @@ Regras que mantemos:
 
 - **Isolamento entre sellers:** toda consulta começa do seller da URL (`$seller->remessas()->findOrFail($id)`).
   Pedir a remessa de um seller na URL de outro dá 404. O seller da URL precisa ser de quem chama (o cliente da API).
-- **As credenciais das transportadoras são do cliente da API (B2C)**, e todos os sellers dele as usam. Só entram por comando (`transportadora:configurar`).
+- **As credenciais das transportadoras são do cliente da API (B2C)**, e todos os sellers dele as usam. Entram por API (`PUT /transportadoras/{t}`) ou pelo comando `transportadora:configurar`; token e senha nunca voltam nas respostas.
 - **Dinheiro sempre em centavos** (número inteiro), nunca decimal.
 - **URLs das transportadoras** ficam só em `config/transportadoras.php`, nunca vêm de dados enviados pela API.
 - **Nenhum segredo** (token, senha, chave) vai para log ou resposta.

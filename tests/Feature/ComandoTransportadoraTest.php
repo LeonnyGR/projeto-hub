@@ -87,7 +87,7 @@ it('cadastra os Correios', function () {
 it('o que foi cadastrado vale para os sellers e aparece na consulta da API sem segredo', function () {
     [$cliente, $chave] = $this->criarCliente('B2C');
     responderJadlog($this->artisan('transportadora:configurar', ['transportadora' => 'jadlog']))->assertSuccessful();
-    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'ativo' => true]);
+    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => true]);
 
     $this->postJson($this->urlDoSeller($seller, '/cotacoes'), $this->dadosDeCotacao(), $this->auth($chave))
         ->assertCreated()->assertJsonPath('data.falhas', []);
@@ -155,7 +155,7 @@ it('com mais de um cliente da API, o id e obrigatorio', function () {
 
 it('ativar e desativar uma transportadora sem redigitar as credenciais', function () {
     [$cliente, $chave] = $this->criarCliente('B2C');
-    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'ativo' => true]);
+    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => true]);
     $this->configurarJadlog($seller);
     $this->configurarCorreios($seller);
 

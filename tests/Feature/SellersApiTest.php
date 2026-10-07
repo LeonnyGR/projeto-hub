@@ -5,18 +5,18 @@ declare(strict_types=1);
 use App\Models\Seller;
 use Illuminate\Support\Facades\DB;
 
-// Cadastro de sellers por API. As credenciais das transportadoras NAO sao cadastradas por API (so por comando:
-// ver ComandoTransportadoraTest); a API so permite consulta.
+// Cadastro de sellers por API. O cadastro das transportadoras (PUT /transportadoras) esta em TransportadorasApiTest.
 
 // ---------------------------------------------------------------- sellers
 
 it('cadastra um seller (e nao gera chave nenhuma)', function () {
     [$cliente, $chave] = $this->criarCliente();
 
-    $r = $this->postJson('/api/v1/sellers', ['nome' => 'Loja do Joao', 'codigo_externo' => 'b2c-123'], $this->auth($chave))
+    $r = $this->postJson('/api/v1/sellers', ['nome' => 'Loja do Joao', 'cep_origem' => '01310-100', 'codigo_externo' => 'b2c-123'], $this->auth($chave))
         ->assertCreated()
         ->assertJsonPath('data.nome', 'Loja do Joao')
         ->assertJsonPath('data.codigo_externo', 'b2c-123')
+        ->assertJsonPath('data.cep_origem', '01310100')
         ->assertJsonPath('data.ativo', true);
 
     expect($r->json('data.id'))->toMatch('/^[0-9a-f-]{36}$/')
@@ -26,9 +26,9 @@ it('cadastra um seller (e nao gera chave nenhuma)', function () {
 
 it('codigo_externo repetido da 409 com o id do seller que ja existe', function () {
     [, $chave] = $this->criarCliente();
-    $primeiro = $this->postJson('/api/v1/sellers', ['nome' => 'Loja A', 'codigo_externo' => 'b2c-1'], $this->auth($chave))->assertCreated()->json('data.id');
+    $primeiro = $this->postJson('/api/v1/sellers', ['nome' => 'Loja A', 'cep_origem' => '01310100', 'codigo_externo' => 'b2c-1'], $this->auth($chave))->assertCreated()->json('data.id');
 
-    $this->postJson('/api/v1/sellers', ['nome' => 'Loja A', 'codigo_externo' => 'b2c-1'], $this->auth($chave))
+    $this->postJson('/api/v1/sellers', ['nome' => 'Loja A', 'cep_origem' => '01310100', 'codigo_externo' => 'b2c-1'], $this->auth($chave))
         ->assertStatus(409)
         ->assertJsonPath('erro.codigo', 'seller_ja_existe')
         ->assertJsonPath('erro.detalhes.seller_id', $primeiro);
@@ -39,8 +39,8 @@ it('codigo_externo repetido da 409 com o id do seller que ja existe', function (
 it('sellers sem codigo_externo podem ser varios', function () {
     [, $chave] = $this->criarCliente();
 
-    $this->postJson('/api/v1/sellers', ['nome' => 'Loja 1'], $this->auth($chave))->assertCreated();
-    $this->postJson('/api/v1/sellers', ['nome' => 'Loja 2'], $this->auth($chave))->assertCreated();
+    $this->postJson('/api/v1/sellers', ['nome' => 'Loja 1', 'cep_origem' => '01310100'], $this->auth($chave))->assertCreated();
+    $this->postJson('/api/v1/sellers', ['nome' => 'Loja 2', 'cep_origem' => '01310100'], $this->auth($chave))->assertCreated();
 });
 
 it('valida o cadastro do seller', function (array $dados, string $campo) {
@@ -49,17 +49,19 @@ it('valida o cadastro do seller', function (array $dados, string $campo) {
     $this->postJson('/api/v1/sellers', $dados, $this->auth($chave))
         ->assertStatus(422)->assertJsonStructure(['erro' => ['detalhes' => [$campo]]]);
 })->with([
-    'sem nome' => [[], 'nome'],
-    'nome curto' => [['nome' => 'A'], 'nome'],
-    'nome longo' => [['nome' => str_repeat('a', 121)], 'nome'],
-    'codigo com caracteres invalidos' => [['nome' => 'Loja', 'codigo_externo' => 'tem espaco'], 'codigo_externo'],
-    'campo desconhecido' => [['nome' => 'Loja', 'ativo' => false], 'ativo'],
+    'sem nome' => [['cep_origem' => '01310100'], 'nome'],
+    'sem cep' => [['nome' => 'Loja'], 'cep_origem'],
+    'cep invalido' => [['nome' => 'Loja', 'cep_origem' => '123'], 'cep_origem'],
+    'nome curto' => [['nome' => 'A', 'cep_origem' => '01310100'], 'nome'],
+    'nome longo' => [['nome' => str_repeat('a', 121), 'cep_origem' => '01310100'], 'nome'],
+    'codigo com caracteres invalidos' => [['nome' => 'Loja', 'cep_origem' => '01310100', 'codigo_externo' => 'tem espaco'], 'codigo_externo'],
+    'campo desconhecido' => [['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => false], 'ativo'],
 ]);
 
 it('lista e consulta sellers', function () {
     [, $chave] = $this->criarCliente();
-    $this->postJson('/api/v1/sellers', ['nome' => 'Zeta'], $this->auth($chave))->assertCreated();
-    $alfa = $this->postJson('/api/v1/sellers', ['nome' => 'Alfa'], $this->auth($chave))->json('data.id');
+    $this->postJson('/api/v1/sellers', ['nome' => 'Zeta', 'cep_origem' => '01310100'], $this->auth($chave))->assertCreated();
+    $alfa = $this->postJson('/api/v1/sellers', ['nome' => 'Alfa', 'cep_origem' => '01310100'], $this->auth($chave))->json('data.id');
 
     $r = $this->getJson('/api/v1/sellers', $this->auth($chave))->assertOk();
     expect(collect($r->json('data'))->pluck('nome')->all())->toBe(['Alfa', 'Zeta']); // em ordem alfabetica
@@ -92,7 +94,7 @@ it('seller desabilitado nao cota nem cria remessa, mas pode ser consultado e rea
 });
 
 it('o cadastro exige a chave do cliente da API', function () {
-    $this->postJson('/api/v1/sellers', ['nome' => 'Loja'])->assertStatus(401);
+    $this->postJson('/api/v1/sellers', ['nome' => 'Loja', 'cep_origem' => '01310100'])->assertStatus(401);
     $this->getJson('/api/v1/sellers')->assertStatus(401);
     $this->getJson('/api/v1/transportadoras')->assertStatus(401);
 });
@@ -101,21 +103,21 @@ it('um cliente da API nao enxerga os sellers de outro (404), e codigo_externo e 
     [$a, $chaveA] = $this->criarCliente('B2C A');
     [$b, $chaveB] = $this->criarCliente('B2C B');
 
-    $seller = $this->postJson('/api/v1/sellers', ['nome' => 'Loja do A', 'codigo_externo' => 'x-1'], $this->auth($chaveA))->assertCreated()->json('data.id');
+    $seller = $this->postJson('/api/v1/sellers', ['nome' => 'Loja do A', 'cep_origem' => '01310100', 'codigo_externo' => 'x-1'], $this->auth($chaveA))->assertCreated()->json('data.id');
 
     $this->getJson("/api/v1/sellers/{$seller}", $this->auth($chaveB))->assertStatus(404);
     $this->postJson("/api/v1/sellers/{$seller}/cotacoes", $this->dadosDeCotacao(), $this->auth($chaveB))->assertStatus(404);
     expect($this->getJson('/api/v1/sellers', $this->auth($chaveB))->json('data'))->toBe([]);
 
     // o mesmo codigo_externo pode existir em outro cliente
-    $this->postJson('/api/v1/sellers', ['nome' => 'Loja do B', 'codigo_externo' => 'x-1'], $this->auth($chaveB))->assertCreated();
+    $this->postJson('/api/v1/sellers', ['nome' => 'Loja do B', 'cep_origem' => '01310100', 'codigo_externo' => 'x-1'], $this->auth($chaveB))->assertCreated();
 });
 
 // ---------------------------------------------------------------- contrato do B2C com a transportadora
 
 
 
-// ---------------------------------------------------------------- transportadoras: so consulta pela API
+// ---------------------------------------------------------------- transportadoras
 
 it('lista as transportadoras do B2C sem mostrar nenhum segredo', function () {
     [$seller, $chave] = $this->criarSeller();
@@ -130,21 +132,10 @@ it('lista as transportadoras do B2C sem mostrar nenhum segredo', function () {
         ->and($r->getContent())->not->toContain('token-secreto-da-jadlog')->not->toContain('senha');
 });
 
-it('a API NAO grava nem altera credenciais de transportadora', function (string $metodo, string $caminho) {
-    [, $chave] = $this->criarCliente();
-
-    $this->json($metodo, $caminho, ['credenciais' => ['token' => 'x']], $this->auth($chave))->assertStatus(in_array($metodo, ['PUT', 'PATCH']) ? 404 : 405);
-    expect(\App\Models\CredencialTransportadora::count())->toBe(0);
-})->with([
-    'PUT em /transportadoras/jadlog' => ['PUT', '/api/v1/transportadoras/jadlog'],
-    'PATCH em /transportadoras/jadlog' => ['PATCH', '/api/v1/transportadoras/jadlog'],
-    'POST em /transportadoras' => ['POST', '/api/v1/transportadoras'],
-]);
-
 it('um cliente da API nao enxerga as transportadoras de outro', function () {
     [$a] = $this->criarCliente('B2C A');
     [, $chaveB] = $this->criarCliente('B2C B');
-    $sellerA = $a->sellers()->create(['nome' => 'Loja do A', 'ativo' => true]);
+    $sellerA = $a->sellers()->create(['nome' => 'Loja do A', 'cep_origem' => '01310100', 'ativo' => true]);
     $this->configurarJadlog($sellerA);
 
     $this->getJson('/api/v1/transportadoras', $this->auth($chaveB))->assertOk()->assertJsonPath('data', []);
@@ -158,12 +149,12 @@ it('fluxo completo: seller novo por API, cotacao e remessa (credenciais do B2C j
     [$cliente, $chave] = $this->criarCliente('B2C');
 
     // 1. as credenciais sao cadastradas UMA vez pela TI (comando transportadora:configurar; aqui, pelo atalho de teste)
-    $sellerDeApoio = $cliente->sellers()->create(['nome' => 'apoio', 'ativo' => true]);
+    $sellerDeApoio = $cliente->sellers()->create(['nome' => 'apoio', 'cep_origem' => '01310100', 'ativo' => true]);
     $this->configurarJadlog($sellerDeApoio);
     $this->configurarCorreios($sellerDeApoio);
 
     // 2. um seller novo ja pode cotar, sem nenhum cadastro de transportadora proprio
-    $seller = $this->postJson('/api/v1/sellers', ['nome' => 'Loja Nova', 'codigo_externo' => 'b2c-777'], $this->auth($chave))->assertCreated()->json('data.id');
+    $seller = $this->postJson('/api/v1/sellers', ['nome' => 'Loja Nova', 'cep_origem' => '01310100', 'codigo_externo' => 'b2c-777'], $this->auth($chave))->assertCreated()->json('data.id');
 
     $cotacao = $this->postJson("/api/v1/sellers/{$seller}/cotacoes", $this->dadosDeCotacao(), $this->auth($chave))->assertCreated();
     expect($cotacao->json('data.opcoes'))->not->toBeEmpty()->and($cotacao->json('data.falhas'))->toBe([]);
@@ -174,4 +165,11 @@ it('fluxo completo: seller novo por API, cotacao e remessa (credenciais do B2C j
 
     $this->postJson("/api/v1/sellers/{$seller}/remessas", $dados, $this->comChave($chave))
         ->assertCreated()->assertJsonPath('data.status', 'criada');
+});
+
+it('atualiza o cep de origem do seller', function () {
+    [$seller, $chave] = $this->criarSeller();
+
+    $this->patchJson($this->urlDoSeller($seller), ['cep_origem' => '20040-020'], $this->auth($chave))->assertOk()->assertJsonPath('data.cep_origem', '20040020');
+    $this->patchJson($this->urlDoSeller($seller), ['cep_origem' => 'abc'], $this->auth($chave))->assertStatus(422);
 });
