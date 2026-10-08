@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Models\CredencialTransportadora;
 use Illuminate\Support\Facades\DB;
 
-// Cadastro das transportadoras do B2C por API (PUT /transportadoras/{t}) e liga/desliga (PATCH).
+// Cadastro das transportadoras do cliente por API (PUT /transportadoras/{t}) e liga/desliga (PATCH).
 
 function dadosDaJadlog(array $mudar = []): array
 {
@@ -62,7 +62,6 @@ it('cadastra os Correios', function () {
 
 it('PUT de novo atualiza (200) e uma transportadora cadastrada ja entra nas cotacoes', function () {
     [$cliente, $chave] = $this->criarCliente();
-    [$seller] = [$cliente->sellers()->create(['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => true])];
 
     $this->putJson('/api/v1/transportadoras/jadlog', dadosDaJadlog(), $this->auth($chave))->assertCreated();
     $this->putJson('/api/v1/transportadoras/jadlog', dadosDaJadlog(['configuracao' => ['cod_cliente' => '999']]), $this->auth($chave))
@@ -70,7 +69,7 @@ it('PUT de novo atualiza (200) e uma transportadora cadastrada ja entra nas cota
 
     expect($cliente->credenciais()->count())->toBe(1);
 
-    $this->postJson("/api/v1/sellers/{$seller->id}/cotacoes", $this->dadosDeCotacao(), $this->auth($chave))
+    $this->postJson('/api/v1/cotacoes', $this->dadosDeCotacao(), $this->auth($chave))
         ->assertCreated()->assertJsonPath('data.falhas', []);
 });
 
@@ -121,11 +120,10 @@ it('transportadora desconhecida da 404', function () {
 
 it('liga e desliga a transportadora; desligada nao entra na cotacao', function () {
     [$cliente, $chave] = $this->criarCliente();
-    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => true]);
     $this->putJson('/api/v1/transportadoras/jadlog', dadosDaJadlog(), $this->auth($chave))->assertCreated();
 
     $this->patchJson('/api/v1/transportadoras/jadlog', ['ativa' => false], $this->auth($chave))->assertOk()->assertJsonPath('data.ativa', false);
-    $this->postJson("/api/v1/sellers/{$seller->id}/cotacoes", $this->dadosDeCotacao(), $this->auth($chave))
+    $this->postJson('/api/v1/cotacoes', $this->dadosDeCotacao(), $this->auth($chave))
         ->assertStatus(422)->assertJsonPath('erro.codigo', 'sem_transportadoras');
 
     $this->patchJson('/api/v1/transportadoras/jadlog', ['ativa' => true], $this->auth($chave))->assertOk()->assertJsonPath('data.ativa', true);
@@ -139,11 +137,11 @@ it('nao liga transportadora que nao foi cadastrada', function () {
     $this->patchJson('/api/v1/transportadoras/jadlog', [], $this->auth($chave))->assertStatus(422);
 });
 
-it('exige a chave e cada cliente so mexe nas proprias transportadoras', function () {
+it('exige credenciais e cada cliente so mexe nas proprias transportadoras', function () {
     $this->putJson('/api/v1/transportadoras/jadlog', dadosDaJadlog())->assertStatus(401);
 
-    [$a, $chaveA] = $this->criarCliente('B2C A');
-    [, $chaveB] = $this->criarCliente('B2C B');
+    [$a, $chaveA] = $this->criarCliente('Cliente A');
+    [, $chaveB] = $this->criarCliente('Cliente B');
     $this->putJson('/api/v1/transportadoras/jadlog', dadosDaJadlog(), $this->auth($chaveA))->assertCreated();
 
     $this->patchJson('/api/v1/transportadoras/jadlog', ['ativa' => false], $this->auth($chaveB))->assertStatus(404);

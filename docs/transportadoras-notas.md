@@ -68,19 +68,19 @@ Pré-postagem **expira em 7 dias** corridos se não for postada.
 3. **`parseCotacao(Response)` não basta para os Correios**: preço e prazo são APIs separadas (2 respostas). O contrato passa a receber um array de respostas indexado pela chave usada em `prepareCotacao`.
 4. **`getEtiqueta`**: Jadlog devolve a etiqueta dentro de `pedido/incluir`; Correios gera sob demanda (assíncrono). O contrato expõe a etiqueta opcional em `RemessaResultado` e `getEtiqueta` só é chamado se não houver PDF guardado.
 5. **Rastro dos Correios**: o texto cita a base `https://apphom.correios.com.br/rastro`; o `curl` do próprio manual usa `/srorastro/v1/objetos/...`. Seguimos o `curl` (executável).
-6. **Jadlog `Authorization`**: o PDF mostra `Authorization: <token>` (sem `Bearer`). Seguimos o PDF; o valor completo do header é o que o seller cadastra.
+6. **Jadlog `Authorization`**: o PDF mostra `Authorization: <token>` (sem `Bearer`). Seguimos o PDF; o valor completo do header é o que o cliente cadastra.
 7. A tabela de modalidades Jadlog (a "tabela 2") **não está** no PDF.
 
 ## Premissas (validar antes de produção)
 
 - **P1** Jadlog `etiqueta.arquivo` = PDF em base64 dentro do JSON.
-- **P2** Jadlog: os códigos de `modalidade` e `servico` são os que o seller cadastra por contrato (campo livre na credencial); o PDF não traz a tabela.
+- **P2** Jadlog: os códigos de `modalidade` e `servico` são os que o cliente cadastra por contrato (campo livre na credencial); o PDF não traz a tabela.
 - **P3** Jadlog: `vltotal`/`valor` em reais (double) → converter para centavos com arredondamento; peso em kg; dimensões em cm.
 - **P4** Jadlog: timestamps de rastreio (`"2023-03-22 15:12:06"`) estão no fuso de Brasília.
 - **P5** Correios: corpo completo da pré-postagem e resposta (incl. `codigoObjeto`) seguem os nomes do CWS; o mapper usa só os campos vistos no PDF + `codigoObjeto` (premissa).
 - **P6** Correios: resposta do rótulo assíncrono = recibo (`idRecibo`) a consultar/baixar em `.../rotulo/download/assincrono/{idRecibo}`; **não está no PDF**.
 - **P7** Correios: erros de preço/prazo/pré-postagem seguem o mesmo padrão `msgs[]`/`txMsg` da API CEP; HTTP 401 para token inválido/expirado.
-- **P8** Correios: códigos de serviço contratados vêm da credencial do seller (exemplos do PDF: `03220`, `04162` SEDEX; `04669` PAC); `tpObjeto=2` (pacote/caixa), `psObjeto` em gramas.
+- **P8** Correios: códigos de serviço contratados vêm da credencial do cliente (exemplos do PDF: `03220`, `04162` SEDEX; `04669` PAC); `tpObjeto=2` (pacote/caixa), `psObjeto` em gramas.
 - **P9** Correios: mapa de status de rastreio por `codigo` do evento além dos 4 exemplos do PDF é nosso e deve ser revisado com a tabela oficial SRO.
 - **P10** Devolução Jadlog = `pedido/incluir` com origem/destino invertidos e `servico=2` (Dropoff), recebendo QRCode por `qrcodeservice`; Devolução Correios = pré-postagem com remetente/destinatário invertidos.
-- **P11** Webhook de rastreio: assinatura HMAC-SHA256 sobre `"{timestamp}.{corpo}"`, header `X-Frete-Assinatura`/`X-Frete-Timestamp`, segredo por transportadora/seller. Como as transportadoras não chamam webhook, o risco é só de superfície exposta; mitigado por assinatura, janela anti-replay, rate limit por IP e limite de corpo.
+- **P11** Webhook de rastreio: assinatura HMAC-SHA256 sobre `"{timestamp}.{corpo}"`, header `X-Frete-Assinatura`/`X-Frete-Timestamp`, segredo por transportadora/cliente. Como as transportadoras não chamam webhook, o risco é só de superfície exposta; mitigado por assinatura, janela anti-replay, rate limit por IP e limite de corpo.

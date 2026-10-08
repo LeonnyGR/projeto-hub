@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Exceptions\ErroDeNegocio;
-use App\Models\Seller;
+use App\Models\Cliente;
 use App\Transportadoras\PontosDeRetirada;
 use App\Transportadoras\TransportadoraIndisponivel;
 use App\Transportadoras\Transportadoras;
@@ -17,7 +17,7 @@ class ConsultasService
     {
     }
 
-    /** CEP nao depende de seller nem de contrato. */
+    /** CEP nao depende de contrato com transportadora. */
     public function endereco(string $cep): array
     {
         return $this->viaCep->buscar($cep);
@@ -29,14 +29,14 @@ class ConsultasService
      *
      * @return array  [pontos, falhas]
      */
-    public function pontosDeRetirada(Seller $seller, string $cep, ?string $tipos, ?string $transportadora): array
+    public function pontosDeRetirada(Cliente $cliente, string $cep, ?string $tipos, ?string $transportadora): array
     {
-        $credenciais = $seller->credenciais()->where('ativa', true)
+        $credenciais = $cliente->credenciais()->where('ativa', true)
             ->when($transportadora !== null, fn ($consulta) => $consulta->where('transportadora', $transportadora))
             ->orderBy('transportadora')->get();
 
         if ($transportadora !== null && $credenciais->isEmpty()) {
-            throw new ErroDeNegocio('transportadora_nao_configurada', "O seller nao tem a transportadora '{$transportadora}' configurada.", 422);
+            throw new ErroDeNegocio('transportadora_nao_configurada', "Voce nao tem a transportadora '{$transportadora}' configurada.", 422);
         }
 
         $pontos = [];
@@ -44,7 +44,7 @@ class ConsultasService
         $consultadas = 0;
 
         foreach ($credenciais as $credencial) {
-            $oferece = Transportadoras::criar($credencial, $seller->id);
+            $oferece = Transportadoras::criar($credencial, $cliente->id);
 
             // Nem toda transportadora oferece pontos de retirada: quem nao oferece e ignorada.
             if (! $oferece instanceof PontosDeRetirada) {

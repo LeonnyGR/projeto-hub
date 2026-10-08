@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// As URLs das transportadoras vem SOMENTE daqui (nunca de dados enviados pelo seller).
+// As URLs das transportadoras vem SOMENTE daqui (nunca de dados enviados pelo cliente).
 return [
     // mock = respostas simuladas, sem chamar ninguem (proibido com APP_ENV=production)
     // real = chama as transportadoras de verdade

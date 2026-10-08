@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('cotacoes', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('seller_id');
+            $table->uuid('cliente_id');
             $table->char('cep_origem', 8);
             $table->char('cep_destino', 8);
             $table->jsonb('requisicao');
@@ -20,10 +20,10 @@ return new class extends Migration
             $table->timestampTz('expira_em');
             $table->timestampsTz();
 
-            $table->foreign('seller_id')->references('id')->on('sellers')->cascadeOnDelete();
-            // Permite a FK composta (seller_id, cotacao_id) da tabela remessas.
-            $table->unique(['seller_id', 'id']);
-            $table->index(['seller_id', 'created_at']);
+            $table->foreign('cliente_id')->references('id')->on('clientes')->cascadeOnDelete();
+            // Permite a FK composta (cliente_id, cotacao_id) da tabela remessas.
+            $table->unique(['cliente_id', 'id']);
+            $table->index(['cliente_id', 'created_at']);
         });
     }
 

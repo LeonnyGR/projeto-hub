@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Services\ApiKeyService;
+use App\Services\ChaveApiService;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
@@ -14,15 +14,16 @@ use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Autentica o sistema que chama a API (o B2C) pela chave de API,
- * enviada no header "Authorization: Bearer prefixo.segredo".
- * Se a chave for valida, deixa o cliente em $request->attributes ('cliente_api').
+ * Descobre qual cliente esta chamando a API pela chave de API:
+ * "Authorization: Bearer <chave>" (a chave e criada pelo dono do cliente no portal).
+ * Se a chave for valida, deixa o cliente em $request->attributes ('cliente'): dai em diante tudo e feito "como"
+ * esse cliente, com os dados e as credenciais de transportadora dele.
  * Qualquer falha devolve o mesmo 401 (nao revela se a chave existe).
  * Muitas falhas seguidas do mesmo IP bloqueiam esse IP por um tempo (429).
  */
 class AutenticaCliente
 {
-    public function __construct(private readonly ApiKeyService $chaves)
+    public function __construct(private readonly ChaveApiService $chaves)
     {
     }
 
@@ -42,8 +43,8 @@ class AutenticaCliente
             throw new AuthenticationException();
         }
 
-        $request->attributes->set('cliente_api', $cliente);
-        Context::add('cliente_api_id', $cliente->id); // aparece em todo log desta requisicao
+        $request->attributes->set('cliente', $cliente);
+        Context::add('cliente_id', $cliente->id); // aparece em todo log desta requisicao
 
         return $next($request);
     }

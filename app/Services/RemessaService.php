@@ -8,7 +8,7 @@ use App\Enums\StatusRemessa;
 use App\Exceptions\ErroDeNegocio;
 use App\Models\CredencialTransportadora;
 use App\Models\Remessa;
-use App\Models\Seller;
+use App\Models\Cliente;
 use App\Transportadoras\TransportadoraIndisponivel;
 use App\Transportadoras\Transportadoras;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -21,9 +21,9 @@ use Throwable;
 /**
  * Remessas (envios e devolucoes): criar, despachar, cancelar e etiqueta.
  *
- * Idempotencia: o seller manda o header Idempotency-Key. Repetir a chamada com a mesma chave e o mesmo
+ * Idempotencia: o cliente manda o header Idempotency-Key. Repetir a chamada com a mesma chave e o mesmo
  * pedido devolve a remessa que ja existe (sem criar outra na transportadora). Mesma chave com pedido
- * diferente da erro. Quem garante isso e a constraint unica (seller_id, idempotency_key) no banco.
+ * diferente da erro. Quem garante isso e a constraint unica (cliente_id, idempotency_key) no banco.
  */
 class RemessaService
 {
@@ -35,19 +35,17 @@ class RemessaService
      * @param  array  $dados  campos validados de RemessaRequest
      * @return array  [Remessa, bool $jaExistia]
      */
-    public function criarEnvio(Seller $seller, array $dados): array
+    public function criarEnvio(Cliente $cliente, array $dados): array
     {
         $hash = $this->hashDoPedido('envio', $dados);
 
         // 1. Repeticao? (vem antes de tudo: a mesma chamada precisa dar a mesma resposta mesmo se a cotacao ja expirou)
-        if ($existente = $seller->remessas()->where('idempotency_key', $dados['idempotency_key'])->first()) {
+        if ($existente = $cliente->remessas()->where('idempotency_key', $dados['idempotency_key'])->first()) {
             return [$this->reaproveitar($existente, $hash), true];
         }
 
-        $seller->exigirAtivo();
-
         // 2. A cotacao e a opcao escolhida precisam ser validas.
-        $cotacao = $seller->cotacoes()->find($dados['cotacao_id'])
+        $cotacao = $cliente->cotacoes()->find($dados['cotacao_id'])
             ?? throw new ErroDeNegocio('cotacao_nao_encontrada', 'Cotacao nao encontrada.', 404);
 
         if ($cotacao->expirada()) {
@@ -63,10 +61,10 @@ class RemessaService
             throw new ErroDeNegocio('cep_diferente_da_cotacao', 'Os CEPs de remetente e destinatario precisam ser os mesmos da cotacao.', 422);
         }
 
-        $credencial = $this->credencial($seller, $dados['transportadora']);
+        $credencial = $this->credencial($cliente, $dados['transportadora']);
 
         // 3. Reserva a chave no banco (status "criando") antes de falar com a transportadora.
-        $remessa = $this->reservar($seller, $hash, [
+        $remessa = $this->reservar($cliente, $hash, [
             'tipo' => 'envio',
             'cotacao_id' => $cotacao->id,
             'idempotency_key' => $dados['idempotency_key'],
@@ -80,7 +78,7 @@ class RemessaService
         ]);
 
         if ($remessa === null) { // outra requisicao com a mesma chave chegou primeiro
-            return [$this->reaproveitar($seller->remessas()->where('idempotency_key', $dados['idempotency_key'])->firstOrFail(), $hash), true];
+            return [$this->reaproveitar($cliente->remessas()->where('idempotency_key', $dados['idempotency_key'])->firstOrFail(), $hash), true];
         }
 
         // 4. Cria na transportadora.
@@ -104,23 +102,21 @@ class RemessaService
     // ------------------------------------------------------------------ criar devolucao
 
     /**
-     * Devolucao = nova remessa no sentido contrario (de quem recebeu de volta para o seller), na mesma
+     * Devolucao = nova remessa no sentido contrario (de quem recebeu de volta para o cliente), na mesma
      * transportadora e servico da remessa original. So vale para remessa ja entregue.
      *
      * @param  array  $dados  campos validados de DevolucaoRequest
      * @return array  [Remessa, bool $jaExistia]
      */
-    public function criarDevolucao(Seller $seller, array $dados): array
+    public function criarDevolucao(Cliente $cliente, array $dados): array
     {
         $hash = $this->hashDoPedido('devolucao', $dados);
 
-        if ($existente = $seller->remessas()->where('idempotency_key', $dados['idempotency_key'])->first()) {
+        if ($existente = $cliente->remessas()->where('idempotency_key', $dados['idempotency_key'])->first()) {
             return [$this->reaproveitar($existente, $hash), true];
         }
 
-        $seller->exigirAtivo();
-
-        $origem = $seller->remessas()->where('tipo', 'envio')->find($dados['remessa_id'])
+        $origem = $cliente->remessas()->where('tipo', 'envio')->find($dados['remessa_id'])
             ?? throw new ErroDeNegocio('remessa_nao_encontrada', 'Remessa nao encontrada.', 404);
 
         if ($origem->status !== StatusRemessa::Entregue) {
@@ -128,16 +124,16 @@ class RemessaService
             throw new ErroDeNegocio('remessa_nao_entregue', 'So e possivel criar devolucao de uma remessa ja entregue.', 422);
         }
 
-        $jaTemDevolucao = $seller->remessas()->where('tipo', 'devolucao')->where('remessa_origem_id', $origem->id)
+        $jaTemDevolucao = $cliente->remessas()->where('tipo', 'devolucao')->where('remessa_origem_id', $origem->id)
             ->where('status', '!=', StatusRemessa::Cancelada->value)->exists();
         if ($jaTemDevolucao) {
             throw new ErroDeNegocio('devolucao_ja_existe', 'Esta remessa ja tem uma devolucao em andamento.', 409);
         }
 
-        $credencial = $this->credencial($seller, $origem->transportadora);
+        $credencial = $this->credencial($cliente, $origem->transportadora);
         $volumes = array_map(fn (array $v) => Arr::only($v, self::CAMPOS_VOLUME), $origem->volumes);
 
-        $remessa = $this->reservar($seller, $hash, [
+        $remessa = $this->reservar($cliente, $hash, [
             'tipo' => 'devolucao',
             'remessa_origem_id' => $origem->id,
             'motivo' => $dados['motivo'],
@@ -145,21 +141,21 @@ class RemessaService
             'transportadora' => $origem->transportadora,
             'servico_codigo' => $origem->servico_codigo,
             'valor_frete_centavos' => null,
-            // Quem recebeu o pedido agora despacha, e o seller recebe.
+            // Quem recebeu o pedido agora despacha, e o cliente recebe.
             'remetente' => $origem->destinatario,
             'destinatario' => $origem->remetente,
             'volumes' => $volumes,
         ]);
 
         if ($remessa === null) {
-            return [$this->reaproveitar($seller->remessas()->where('idempotency_key', $dados['idempotency_key'])->firstOrFail(), $hash), true];
+            return [$this->reaproveitar($cliente->remessas()->where('idempotency_key', $dados['idempotency_key'])->firstOrFail(), $hash), true];
         }
 
         $this->criarNaTransportadora($remessa, $credencial, [
             'id' => $remessa->id,
             'tipo' => 'devolucao',
             'servico_codigo' => $origem->servico_codigo,
-            'valor_declarado_centavos' => $seller->cotacoes()->find($origem->cotacao_id)?->requisicao['valor_declarado_centavos'] ?? 0,
+            'valor_declarado_centavos' => $cliente->cotacoes()->find($origem->cotacao_id)?->requisicao['valor_declarado_centavos'] ?? 0,
             'numero_pedido' => null,
             'conteudo' => 'DEVOLUCAO',
             'ponto_retirada_id' => null,
@@ -174,7 +170,7 @@ class RemessaService
 
     // ------------------------------------------------------------------ despachar / cancelar / etiqueta
 
-    /** O seller avisa que entregou o pacote a transportadora. (So muda o status; nao ha chamada a transportadora.) */
+    /** O cliente avisa que entregou o pacote a transportadora. (So muda o status; nao ha chamada a transportadora.) */
     public function despachar(Remessa $remessa): Remessa
     {
         if (! $remessa->status->podeDespachar()) {
@@ -183,18 +179,18 @@ class RemessaService
 
         $remessa->update(['status' => StatusRemessa::Despachada, 'despachada_em' => now()]);
 
-        Log::info('Remessa despachada', ['seller_id' => $remessa->seller_id, 'remessa_id' => $remessa->id]);
+        Log::info('Remessa despachada', ['cliente_id' => $remessa->cliente_id, 'remessa_id' => $remessa->id]);
 
         return $remessa;
     }
 
-    public function cancelar(Seller $seller, Remessa $remessa): Remessa
+    public function cancelar(Cliente $cliente, Remessa $remessa): Remessa
     {
         if (! $remessa->status->podeCancelar()) {
             throw new ErroDeNegocio('status_invalido', "Uma remessa {$remessa->status->value} nao pode ser cancelada.", 409);
         }
 
-        $transportadora = Transportadoras::criar($this->credencial($seller, $remessa->transportadora), $seller->id);
+        $transportadora = Transportadoras::criar($this->credencial($cliente, $remessa->transportadora), $cliente->id);
 
         try {
             $transportadora->cancelarRemessa(['id_externo' => $remessa->id_externo, 'volumes' => $remessa->volumes]);
@@ -204,13 +200,13 @@ class RemessaService
 
         $remessa->update(['status' => StatusRemessa::Cancelada, 'cancelada_em' => now()]);
 
-        Log::info('Remessa cancelada', ['seller_id' => $seller->id, 'remessa_id' => $remessa->id]);
+        Log::info('Remessa cancelada', ['cliente_id' => $cliente->id, 'remessa_id' => $remessa->id]);
 
         return $remessa;
     }
 
     /** Conteudo do PDF da etiqueta. Se ainda nao temos, pede a transportadora (Correios). */
-    public function etiqueta(Seller $seller, Remessa $remessa): string
+    public function etiqueta(Cliente $cliente, Remessa $remessa): string
     {
         if ($remessa->status === StatusRemessa::Cancelada || $remessa->status === StatusRemessa::Criando) {
             throw new ErroDeNegocio('status_invalido', "Uma remessa {$remessa->status->value} nao tem etiqueta.", 409);
@@ -222,7 +218,7 @@ class RemessaService
             return $disco->get($remessa->etiqueta_caminho);
         }
 
-        $transportadora = Transportadoras::criar($this->credencial($seller, $remessa->transportadora), $seller->id);
+        $transportadora = Transportadoras::criar($this->credencial($cliente, $remessa->transportadora), $cliente->id);
 
         try {
             $pdf = $transportadora->etiqueta(['id_externo' => $remessa->id_externo, 'volumes' => $remessa->volumes]);
@@ -258,11 +254,11 @@ class RemessaService
     /**
      * Grava a remessa com status "criando". Devolve null se a chave ja existe (outra requisicao chegou antes).
      */
-    private function reservar(Seller $seller, string $hash, array $campos): ?Remessa
+    private function reservar(Cliente $cliente, string $hash, array $campos): ?Remessa
     {
         try {
             // A transacao serve para o erro de chave duplicada nao estragar uma transacao externa (testes).
-            return DB::transaction(fn () => $seller->remessas()->create($campos + [
+            return DB::transaction(fn () => $cliente->remessas()->create($campos + [
                 'hash_requisicao' => $hash,
                 'status' => StatusRemessa::Criando,
             ]));
@@ -271,15 +267,15 @@ class RemessaService
         }
     }
 
-    /** Chama a transportadora e completa a remessa. Se der erro, apaga a reserva para o seller poder tentar de novo. */
+    /** Chama a transportadora e completa a remessa. Se der erro, apaga a reserva para o cliente poder tentar de novo. */
     private function criarNaTransportadora(Remessa $remessa, CredencialTransportadora $credencial, array $pedido): void
     {
         try {
-            $resultado = Transportadoras::criar($credencial, $remessa->seller_id)->criarRemessa($pedido);
+            $resultado = Transportadoras::criar($credencial, $remessa->cliente_id)->criarRemessa($pedido);
         } catch (Throwable $e) {
             $remessa->delete();
 
-            Log::warning('Remessa nao criada na transportadora', ['seller_id' => $remessa->seller_id, 'transportadora' => $remessa->transportadora, 'erro' => $e::class]);
+            Log::warning('Remessa nao criada na transportadora', ['cliente_id' => $remessa->cliente_id, 'transportadora' => $remessa->transportadora, 'erro' => $e::class]);
 
             throw $e instanceof TransportadoraIndisponivel ? $e->paraErroDeNegocio() : $e;
         }
@@ -302,7 +298,7 @@ class RemessaService
         }
 
         Log::info('Remessa criada', [
-            'seller_id' => $remessa->seller_id, 'remessa_id' => $remessa->id,
+            'cliente_id' => $remessa->cliente_id, 'remessa_id' => $remessa->id,
             'tipo' => $remessa->tipo, 'transportadora' => $remessa->transportadora,
         ]);
     }
@@ -310,7 +306,7 @@ class RemessaService
     /** Guarda o PDF no disco de etiquetas. Falha ao guardar nao pode desfazer uma remessa ja criada. */
     private function guardarEtiqueta(Remessa $remessa, string $pdf): void
     {
-        $caminho = "{$remessa->seller_id}/{$remessa->id}.pdf";
+        $caminho = "{$remessa->cliente_id}/{$remessa->id}.pdf";
 
         try {
             Storage::disk(config('frete.etiquetas_disco'))->put($caminho, $pdf);
@@ -320,10 +316,10 @@ class RemessaService
         }
     }
 
-    private function credencial(Seller $seller, string $transportadora): CredencialTransportadora
+    private function credencial(Cliente $cliente, string $transportadora): CredencialTransportadora
     {
-        return $seller->credenciais()->where('transportadora', $transportadora)->where('ativa', true)->first()
-            ?? throw new ErroDeNegocio('transportadora_nao_configurada', "O seller nao tem a transportadora '{$transportadora}' configurada.", 422);
+        return $cliente->credenciais()->where('transportadora', $transportadora)->where('ativa', true)->first()
+            ?? throw new ErroDeNegocio('transportadora_nao_configurada', "Voce nao tem a transportadora '{$transportadora}' configurada.", 422);
     }
 
     /** Resumo do pedido, igual para pedidos iguais (a ordem dos campos nao importa). */

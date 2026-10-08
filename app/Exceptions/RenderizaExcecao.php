@@ -12,6 +12,7 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -52,10 +53,11 @@ class RenderizaExcecao
         }
 
         if ($e instanceof AuthenticationException) {
-            return [401, 'nao_autenticado', 'Credenciais ausentes ou invalidas.', [], ['WWW-Authenticate' => 'Bearer']];
+            return [401, 'nao_autenticado', 'Credenciais ausentes ou invalidas.', [], ['WWW-Authenticate' => 'Bearer realm="frete-hub"']];
         }
 
-        if ($e instanceof AuthorizationException) {
+        // O Laravel troca AuthorizationException por AccessDeniedHttpException antes de chegar aqui; tratamos as duas.
+        if ($e instanceof AuthorizationException || $e instanceof AccessDeniedHttpException) {
             return [403, 'proibido', 'Acao nao permitida.', [], []];
         }
 

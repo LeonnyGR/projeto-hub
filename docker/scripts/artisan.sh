@@ -3,17 +3,16 @@
 # Aceita digitacao interativa (por exemplo, confirmacoes de comandos).
 #
 # Exemplos:
-#   docker/scripts/artisan.sh cliente:create "B2C"
-#   docker/scripts/artisan.sh cliente:list
-#   docker/scripts/artisan.sh transportadora:configurar jadlog
-#   docker/scripts/artisan.sh cliente:rotate-key <id-do-cliente>
+#   docker/scripts/artisan.sh transportadora:configurar jadlog <client_id>
+#   docker/scripts/artisan.sh transportadora:ativar jadlog <client_id>
+#   docker/scripts/artisan.sh route:list
 #   docker/scripts/artisan.sh list
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 exige_docker
 carrega_env
 
-[[ $# -gt 0 ]] || die "Informe o comando artisan. Ex.: docker/scripts/artisan.sh cliente:create \"B2C\""
+[[ $# -gt 0 ]] || die "Informe o comando artisan. Ex.: docker/scripts/artisan.sh transportadora:configurar jadlog"
 
 ef="$(env_file_para app)"
 trap 'rm -f "$ef"' EXIT

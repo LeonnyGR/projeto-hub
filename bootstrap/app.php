@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 use App\Exceptions\RenderizaExcecao;
 use App\Http\Controllers\HealthController;
+use App\Http\Middleware\AutenticaAdmin;
 use App\Http\Middleware\AutenticaCliente;
+use App\Http\Middleware\AutenticaPortal;
 use App\Http\Middleware\CabecalhosDeSeguranca;
-use App\Http\Middleware\CarregaSeller;
+use App\Http\Middleware\ExigePapel;
 use App\Http\Middleware\ForcaJson;
 use App\Http\Middleware\RequestId;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpFoundation\Request;
@@ -37,15 +42,24 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PORT | Request::HEADER_X_FORWARDED_HOST,
         );
 
-        $middleware->alias(['auth.cliente' => AutenticaCliente::class, 'seller.da.url' => CarregaSeller::class]);
+        $middleware->alias([
+            'auth.cliente' => AutenticaCliente::class,
+            'auth.admin' => AutenticaAdmin::class,
+            'auth.portal' => AutenticaPortal::class,
+            'papel' => ExigePapel::class,
+        ]);
+
+        // Rotas do portal: sao as unicas com cookie e sessao (a API de chave de API nao usa cookie).
+        $middleware->group('portal', [EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class]);
         $middleware->prepend([RequestId::class, ForcaJson::class]);
         $middleware->append(CabecalhosDeSeguranca::class);
 
-        // Limite de requisicoes guardado no Redis. A autenticacao e o carregamento do seller precisam rodar antes
-        // (o limite e por seller), por isso vao na frente do throttle, nesta ordem.
+        // Limite de requisicoes guardado no Redis. A autenticacao precisa rodar antes
+        // (o limite e por cliente), por isso vai na frente do throttle.
         $middleware->throttleWithRedis();
         $middleware->prependToPriorityList(before: ThrottleRequests::class, prepend: AutenticaCliente::class);
-        $middleware->prependToPriorityList(before: ThrottleRequests::class, prepend: CarregaSeller::class);
+        $middleware->prependToPriorityList(before: ThrottleRequests::class, prepend: AutenticaAdmin::class);
+        $middleware->prependToPriorityList(before: ThrottleRequests::class, prepend: AutenticaPortal::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(fn () => true);

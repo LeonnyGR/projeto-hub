@@ -1,6 +1,6 @@
 # Fluxo completo: da digitação do CEP à devolução
 
-Este guia segue **uma compra de verdade**, passo a passo, mostrando o que o B2C chama e **qual código roda por dentro** em cada etapa.
+Este guia segue **uma compra de verdade**, passo a passo, mostrando o que o backend do cliente chama e **qual código roda por dentro** em cada etapa.
 Na segunda parte, ensina a **implementar uma transportadora nova** (o trabalho do trainee).
 
 Como usar: leia um passo, abra os arquivos linkados e acompanhe. Os links apontam para o início de cada função.
@@ -39,15 +39,26 @@ Para os conceitos de Laravel que aparecem (injeção de dependência, middleware
 
 ## A cena
 
-A **Maria** entra no site do B2C e escolhe um produto da **Loja do João** (um seller). Ela digita o CEP de entrega, vê as opções de frete,
+A **Maria** entra no site da **Loja do João** (um **cliente** do hub) e escolhe um produto. Ela digita o CEP de entrega, vê as opções de frete,
 escolhe uma e finaliza a compra. Depois a loja imprime a etiqueta, entrega o pacote à transportadora e, dias depois, a Maria pede devolução.
 
-Quem chama a API é o **backend do B2C** (nunca o navegador da Maria), sempre com a chave de API do B2C.
-O B2C sabe o `seller_id` da Loja do João e o coloca na URL.
+Quem chama a API é o **backend da Loja do João** (nunca o navegador da Maria), sempre com a **chave de API** da loja
+(`Authorization: Bearer fs_<prefixo>.<segredo>`). O hub descobre quem é o cliente por essa chave e usa **as credenciais de Jadlog e Correios que a própria loja cadastrou**.
+Não há id de loja na URL, e outro cliente do hub nunca vê os dados da loja.
 
 ```
-Maria ─► site do B2C ─► backend do B2C ──(chave de API)──► FRETE HUB ──► Jadlog / Correios
+Maria ─► site da loja ─► backend da loja ──(chave de API)──► FRETE HUB ──► Jadlog / Correios
 ```
+
+O hub tem **três portas de entrada**, e este guia segue a porta 2 (a do backend da loja):
+
+| Porta | Quem usa | Prefixo | Autenticação | Middleware |
+|---|---|---|---|---|
+| 1. Administração | a TI do hub | `/api/v1/admin/...` | `Bearer <ADMIN_API_TOKEN>` | [`AutenticaAdmin`](../app/Http/Middleware/AutenticaAdmin.php) |
+| 2. Chave de API | o backend do cliente | `/api/v1/...` | `Bearer fs_<prefixo>.<segredo>` | [`AutenticaCliente`](../app/Http/Middleware/AutenticaCliente.php) |
+| 3. Portal | o dono e os operadores do cliente | `/api/v1/portal/...` | e-mail + senha, cookie de sessão | [`AutenticaPortal`](../app/Http/Middleware/AutenticaPortal.php) (+ [`ExigePapel`](../app/Http/Middleware/ExigePapel.php) nas rotas de dono) |
+
+As portas 2 e 3 chamam **os mesmos controllers**. Tudo o que você ler abaixo vale para as duas; muda só quem está autenticado.
 
 ## O que toda chamada faz antes de chegar no código do passo
 
@@ -55,46 +66,71 @@ Todas as chamadas passam, **nesta ordem**, pelas mesmas peças. Entenda isso uma
 
 | # | Peça | O que faz | Se falhar |
 |---|---|---|---|
-| 1 | [`RequestId`](../app/Http/Middleware/RequestId.php#L22) | Dá um número à requisição (vai na resposta e em todos os logs) | n/a |
+| 1 | [`RequestId`](../app/Http/Middleware/RequestId.php#L18) | Dá um número à requisição (vai na resposta e em todos os logs) | n/a |
 | 2 | [`ForcaJson`](../app/Http/Middleware/ForcaJson.php) | Garante respostas em JSON | n/a |
-| 3 | [`AutenticaCliente`](../app/Http/Middleware/AutenticaCliente.php#L29) | Confere a chave de API do B2C no header `Authorization` | **401** |
-| 4 | [`CarregaSeller`](../app/Http/Middleware/CarregaSeller.php#L21) | Acha o seller da URL (só se for do B2C que chamou) | **404** |
-| 5 | `throttle:...` | Limite de chamadas por minuto, por seller | **429** |
-| 6 | **Form Request** | Valida o corpo da requisição (se a rota tiver um) | **422** |
-| 7 | Controller → Service | O código do passo (é o que a gente detalha abaixo) | varia |
-| 8 | [`RenderizaExcecao`](../app/Exceptions/RenderizaExcecao.php#L27) | Se algo lançou exceção, transforma em JSON padrão | n/a |
-| 9 | [`CabecalhosDeSeguranca`](../app/Http/Middleware/CabecalhosDeSeguranca.php) | Acrescenta headers de segurança na resposta | n/a |
+| 3 | [`AutenticaCliente`](../app/Http/Middleware/AutenticaCliente.php) (porta 2) ou [`AutenticaPortal`](../app/Http/Middleware/AutenticaPortal.php) (porta 3) | Chave de API: confere `Authorization: Bearer <chave>`. Portal: lê o usuário da sessão (cookie). Nos dois casos deixa o cliente na requisição | **401** |
+| 3b | [`ExigePapel`](../app/Http/Middleware/ExigePapel.php) (só em algumas rotas do portal) | Libera só o dono (`adm_tenant`): chaves de API, operadores e `PUT/PATCH /transportadoras` | **403** |
+| 4 | `throttle:...` | Limite de chamadas por minuto, por cliente | **429** |
+| 5 | **Form Request** | Valida o corpo da requisição (se a rota tiver um) | **422** |
+| 6 | Controller → Service | O código do passo (é o que a gente detalha abaixo) | varia |
+| 7 | [`RenderizaExcecao`](../app/Exceptions/RenderizaExcecao.php) | Se algo lançou exceção, transforma em JSON padrão | n/a |
+| 8 | [`CabecalhosDeSeguranca`](../app/Http/Middleware/CabecalhosDeSeguranca.php) | Acrescenta headers de segurança na resposta | n/a |
 
-As rotas e os middlewares de cada uma estão em [routes/api.php](../routes/api.php); os apelidos (`auth.cliente`...) em [bootstrap/app.php](../bootstrap/app.php#L40).
+As rotas e os middlewares de cada uma estão em [routes/api.php](../routes/api.php); os apelidos (`auth.cliente`...) em [bootstrap/app.php](../bootstrap/app.php).
 
-Dois atalhos que os controllers usam ([Controller.php](../app/Http/Controllers/Controller.php#L14)): `$this->cliente($request)` e `$this->seller($request)` devolvem o que os middlewares 3 e 4 deixaram na requisição.
+Um atalho que os controllers usam ([Controller.php](../app/Http/Controllers/Controller.php)): `$this->cliente($request)` devolve o cliente que o middleware 3 deixou na requisição. Toda consulta parte dele (`$cliente->remessas()->findOrFail($id)`), e é isso que garante o isolamento: dado de outro cliente dá 404.
 
 ---
 
 ## Passo 0: preparação (feita uma vez)
 
-Antes de a Maria comprar qualquer coisa, a TI e o B2C fazem três coisas:
+Antes de a Maria comprar qualquer coisa, a TI do hub e a loja fazem três coisas:
 
-**a) A TI cria a chave do B2C** (comando; a chave aparece uma única vez):
+**a) A TI cadastra o cliente e o dono dele** (API de administração, com o token de admin do `.env`):
 ```bash
-docker/scripts/artisan.sh cliente:create "B2C"
+curl -X POST http://127.0.0.1:8090/api/v1/admin/clientes \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"nome": "Loja do João", "cnpj": "12.345.678/0001-95",
+       "dono": {"nome": "João da Silva", "email": "joao@lojadojoao.com.br", "password": "uma-senha-com-10-ou-mais"}}'
 ```
-Código: [CriarClienteApi](../app/Console/Commands/CriarClienteApi.php) → [`ApiKeyService::criarCliente`](../app/Services/ApiKeyService.php#L61). O banco guarda só o **hash** do segredo.
+Código: [AutenticaAdmin](../app/Http/Middleware/AutenticaAdmin.php) (confere o token) → [Admin\ClienteController::store](../app/Http/Controllers/Admin/ClienteController.php) → [`ClienteService::criar`](../app/Services/ClienteService.php),
+que cria o cliente **e** o usuário dono (`adm_tenant`) numa transação só. A TI entrega ao João o e-mail e a senha provisória.
 
-**b) A TI cadastra as credenciais das transportadoras** (comando interativo; segredos ficam criptografados):
+**b) O João (dono) entra no portal e cria a chave de API do backend da loja:**
 ```bash
-docker/scripts/artisan.sh transportadora:configurar jadlog
+curl -s -c cookies.txt -X POST http://127.0.0.1:8090/api/v1/portal/login -H "Content-Type: application/json" \
+  -d '{"email": "joao@lojadojoao.com.br", "password": "uma-senha-com-10-ou-mais"}'
+
+curl -s -b cookies.txt -X POST http://127.0.0.1:8090/api/v1/portal/chaves -H "Content-Type: application/json" -d '{"nome": "producao"}'
+# a resposta traz "chave": "fs_3fa91c0b2d4e.k8Jx..."  (aparece UMA vez: guarde no cofre do backend da loja)
 ```
-Código: [ConfigurarTransportadora](../app/Console/Commands/ConfigurarTransportadora.php#L24). **Aqui já aparece o primeiro ponto onde uma transportadora nova entra:**
-o comando pergunta o que a classe da transportadora mandar em [`perguntas()`](../app/Transportadoras/Jadlog.php#L41) e valida com [`regras()`](../app/Transportadoras/Jadlog.php#L19).
+Código: [Portal\SessaoController::login](../app/Http/Controllers/Portal/SessaoController.php) (confere a senha e abre a sessão) → [Portal\ChaveApiController::store](../app/Http/Controllers/Portal/ChaveApiController.php)
+(só o dono: `ExigePapel`) → [`ChaveApiService::criar`](../app/Services/ChaveApiService.php). O banco guarda só o **hash** do segredo da chave.
+Daí em diante o backend da loja chama a API com `-H "Authorization: Bearer $CHAVE"`. Se o João quiser, cadastra também **operadores** (`POST /portal/usuarios`) para a equipe, via [Portal\UsuarioController](../app/Http/Controllers/Portal/UsuarioController.php) e [`UsuarioService`](../app/Services/UsuarioService.php).
+
+**c) O dono cadastra o contrato dele com as transportadoras** (pela tela do portal, que usa a API; os segredos ficam criptografados). A tela funciona em 4 passos:
+```
+1. GET  /api/v1/portal/transportadoras/catalogo        → quais transportadoras existem e quais campos cada uma pede (a tela desenha o formulário)
+2. PUT  /api/v1/portal/transportadoras/correios        → o dono preenche e a tela envia
+3. GET  /api/v1/portal/transportadoras                 → lista o cadastrado, com "credenciais_mascaradas" ("••••••1234")
+4. POST /api/v1/portal/transportadoras/correios/credenciais   { "password": "<senha do dono>" }   → só se ele clicar em "mostrar"
+```
+O catálogo vem do **código** ([`Transportadoras::catalogo()`](../app/Transportadoras/Transportadoras.php), que lê `nome()`, `perguntas()` e `regras()` de cada classe), então a tela não tem campos fixos.
+O passo 4 pede a senha de novo, só funciona para o dono, tem limite (`LIMITE_REVELAR_MIN`, 5 por minuto) e fica registrado no log (nunca o segredo):
+[Portal\CredencialController::revelar](../app/Http/Controllers/Portal/CredencialController.php).
+O corpo do passo 2 (o mesmo pela chave de API, sem o `/portal`):
+```
+PUT /api/v1/transportadoras/correios
+{ "credenciais": { "usuario": "…", "senha": "…", "cartao_postagem": "…" },
+  "configuracao": { "contrato": "…", "servicos": [ {"codigo": "03220", "nome": "SEDEX"}, {"codigo": "04669", "nome": "PAC"} ] } }
+```
+Código: [TransportadoraController::catalogo e ::update](../app/Http/Controllers/TransportadoraController.php) → [`TransportadoraService::configurar`](../app/Services/TransportadoraService.php).
+A TI também pode fazer o mesmo pelo terminal: `docker/scripts/artisan.sh transportadora:configurar correios <id-do-cliente>`
+([ConfigurarTransportadora](../app/Console/Commands/ConfigurarTransportadora.php)). **Aqui já aparece o primeiro ponto onde uma transportadora nova entra:**
+o cadastro valida com [`regras()`](../app/Transportadoras/Jadlog.php) da classe da transportadora, e o comando pergunta o que a classe mandar em [`perguntas()`](../app/Transportadoras/Jadlog.php).
 (Detalhe: não existe um comando por transportadora; o comando lê as perguntas da classe.)
 
-**c) O B2C cadastra o seller** (por API):
-```
-POST /api/v1/sellers      {"nome": "Loja do João", "codigo_externo": "b2c-123"}
-```
-Código: [SellerController::store](../app/Http/Controllers/SellerController.php#L21) → [SellerService::criar](../app/Services/SellerService.php#L22). Devolve o `id` do seller.
-O seller **não recebe chave nem credencial**: usa as credenciais do B2C.
+> A **chave de API nunca vai para o navegador**. A tela do portal usa login e cookie (`HttpOnly`, o JavaScript não lê); só o **backend** da loja guarda a chave.
 
 ---
 
@@ -102,16 +138,16 @@ O seller **não recebe chave nem credencial**: usa as credenciais do B2C.
 
 **Cena:** a Maria digita `35432065`; o site precisa preencher rua, bairro e cidade.
 
-**Chamada do B2C:**
+**Chamada do backend da loja:**
 ```
 GET /api/v1/enderecos/35432065
 ```
-(rota sem seller: o CEP não depende de contrato.)
+(O CEP não depende de contrato com transportadora, mas a chamada continua exigindo autenticação: a chave de API, no header `Authorization: Bearer ...`.)
 
 **Por dentro:**
-1. [`routes/api.php:18`](../routes/api.php#L18) → [`EnderecoController::show`](../app/Http/Controllers/EnderecoController.php): tira máscara do CEP e recusa se não tiver 8 dígitos (422).
+1. [`routes/api.php`](../routes/api.php) → [`EnderecoController::show`](../app/Http/Controllers/EnderecoController.php): tira máscara do CEP e recusa se não tiver 8 dígitos (422).
 2. [`ConsultasService::endereco`](../app/Services/ConsultasService.php#L21) → [`ViaCep::buscar`](../app/Services/ViaCep.php#L31).
-3. O `ViaCep` consulta o **ViaCEP** (serviço público) pelo [`ClienteHttp`](../app/Transportadoras/ClienteHttp.php#L28) e converte para o nosso formato. Respostas boas ficam em **cache por 7 dias** (para não consultar sempre).
+3. O `ViaCep` consulta o **ViaCEP** (serviço público) pelo [`ClienteHttp`](../app/Transportadoras/ClienteHttp.php#L25) e converte para o nosso formato. Respostas boas ficam em **cache por 7 dias** (para não consultar sempre).
 4. CEP inexistente → 404 `cep_nao_encontrado`. ViaCEP fora do ar → 502.
 
 **Resposta:**
@@ -127,21 +163,21 @@ GET /api/v1/enderecos/35432065
 
 ## Passo 2: ver pontos de retirada (opcional)
 
-**Cena:** o B2C oferece "retirar em um ponto" e quer listar os pontos perto da Maria.
+**Cena:** a loja oferece "retirar em um ponto" e quer listar os pontos perto da Maria.
 
 **Chamada:**
 ```
-GET /api/v1/sellers/{seller}/pontos-retirada?cep=35432065
+GET /api/v1/pontos-retirada?cep=35432065
 ```
 
 **Por dentro:**
 1. [`PontoRetiradaRequest`](../app/Http/Requests/PontoRetiradaRequest.php) valida (`cep` obrigatório; `transportadora` e `tipos` opcionais).
 2. [`PontoRetiradaController::index`](../app/Http/Controllers/PontoRetiradaController.php) → [`ConsultasService::pontosDeRetirada`](../app/Services/ConsultasService.php#L32).
-3. O service pega as **credenciais ativas do B2C** e, para cada transportadora, pergunta: "você implementa [`PontosDeRetirada`](../app/Transportadoras/PontosDeRetirada.php)?" (`instanceof`).
+3. O service pega as **credenciais ativas do cliente** e, para cada transportadora, pergunta: "você implementa [`PontosDeRetirada`](../app/Transportadoras/PontosDeRetirada.php)?" (`instanceof`).
    Quem não implementa é ignorada. Quem implementa é consultada, e cada ponto ganha o campo `transportadora`.
 4. Se uma falhar, as outras continuam; a falha aparece em `falhas`.
 
-**Hoje:** só a [Jadlog](../app/Transportadoras/Jadlog.php#L191) implementa.
+**Hoje:** só a [Jadlog](../app/Transportadoras/Jadlog.php#L17) implementa.
 
 **Transportadora nova aqui?** **Opcional.** Se ela tiver pontos de retirada, a classe implementa a interface `PontosDeRetirada`, e este passo já passa a incluí-la, **sem mexer em mais nada**.
 
@@ -153,24 +189,25 @@ GET /api/v1/sellers/{seller}/pontos-retirada?cep=35432065
 
 **Chamada:**
 ```
-POST /api/v1/sellers/{seller}/cotacoes
+POST /api/v1/cotacoes
 { "cep_origem": "01310100", "cep_destino": "35432065", "valor_declarado_centavos": 15000,
   "volumes": [{ "peso_gramas": 1200, "altura_cm": 10, "largura_cm": 20, "comprimento_cm": 30 }] }
 ```
 
+**Várias origens (vários vendedores)?** O `cep_origem` vai em toda cotação, então o B2C faz **uma chamada `POST /cotacoes` por origem**, cada uma com o CEP do vendedor. Exemplo: dois vendedores, um em 01310100 e outro em 30130010, mandando para o mesmo cliente = duas cotações, com dois `id` diferentes. O B2C junta as respostas na tela dele, e ao fechar o pedido cria uma remessa com o `cotacao_id` de cada origem.
+
 **Por dentro, na ordem:**
-1. [`CotacaoRequest`](../app/Http/Requests/CotacaoRequest.php#L19) valida (CEP com 8 dígitos, pesos e medidas dentro dos limites, no máximo 10 volumes). Campo desconhecido = 422.
+1. [`CotacaoRequest`](../app/Http/Requests/CotacaoRequest.php#L7) valida (CEP com 8 dígitos, pesos e medidas dentro dos limites, no máximo 10 volumes). Campo desconhecido = 422.
 2. [`CotacaoController::store`](../app/Http/Controllers/CotacaoController.php#L15) chama [`CotacaoService::cotar`](../app/Services/CotacaoService.php#L28).
-3. O service faz **seis coisas**:
-   1. `$seller->exigirAtivo()`: seller desabilitado? 409.
-   2. Pega as credenciais **ativas** do B2C. Nenhuma? 422 `sem_transportadoras`.
-   3. Para cada credencial, [`Transportadoras::criar`](../app/Transportadoras/Transportadoras.php#L27) cria a classe certa (`Jadlog`, `Correios`...) e chama **`pedidosDeCotacao($dados)`**.
+3. O service faz **cinco coisas**:
+   1. Pega as credenciais **ativas deste cliente**. Nenhuma? 422 `sem_transportadoras`.
+   2. Para cada credencial, [`Transportadoras::criar`](../app/Transportadoras/Transportadoras.php#L27) cria a classe certa (`Jadlog`, `Correios`...) e chama **`pedidosDeCotacao($dados)`**.
       Essa função **só descreve** as chamadas HTTP que precisa fazer (URL, headers, corpo). Não envia nada.
-   4. O [`ClienteHttp::enviarEmParalelo`](../app/Transportadoras/ClienteHttp.php#L52) envia **todas as chamadas de todas as transportadoras ao mesmo tempo** (`Http::pool`), cada uma com timeout de 3 s.
+   3. O [`ClienteHttp::enviarEmParalelo`](../app/Transportadoras/ClienteHttp.php#L52) envia **todas as chamadas de todas as transportadoras ao mesmo tempo** (`Http::pool`), cada uma com timeout de 3 s.
       Cada chamada é gravada no histórico (`chamadas_transportadoras`) com dados sensíveis mascarados.
-   5. Cada transportadora recebe **as suas respostas** em **`lerCotacao($dados, $respostas)`** e devolve as opções (`servico_codigo`, `servico_nome`, `valor_centavos`, `prazo_dias`).
+   4. Cada transportadora recebe **as suas respostas** em **`lerCotacao($dados, $respostas)`** e devolve as opções (`servico_codigo`, `servico_nome`, `valor_centavos`, `prazo_dias`).
       Se der problema, ela **lança** `TransportadoraIndisponivel` e o service anota em `falhas`; **as outras seguem**.
-   6. Ordena do mais barato ao mais caro e salva a `Cotacao` (resultados em `jsonb`, expira em 15 min).
+   5. Ordena do mais barato ao mais caro e salva a `Cotacao` (resultados em `jsonb`, expira em 15 min).
 4. [`CotacaoResource`](../app/Http/Resources/CotacaoResource.php) monta o JSON.
 
 **Resposta (resumo):**
@@ -185,33 +222,33 @@ Se cada transportadora enviasse a própria chamada, uma esperaria a outra termin
 
 **Transportadora nova aqui?** **Sim**: implementa `pedidosDeCotacao` e `lerCotacao` (ver Parte 2). É a primeira coisa a fazer e a mais importante.
 
-Um exemplo concreto, para ver o desenho funcionando: a [Jadlog](../app/Transportadoras/Jadlog.php#L84) monta o JSON do PDF dela (peso cubado, até 3 modalidades por chamada);
-os [Correios](../app/Transportadoras/Correios.php#L73) precisam de **duas APIs** (preço e prazo) e de um **token** que dura 24 h (guardado no cache).
+Um exemplo concreto, para ver o desenho funcionando: a [Jadlog](../app/Transportadoras/Jadlog.php#L17) monta o JSON do PDF dela (peso cubado, até 3 modalidades por chamada);
+os [Correios](../app/Transportadoras/Correios.php#L23) precisam de **duas APIs** (preço e prazo) e de um **token** que dura 24 h (guardado no cache).
 
 ---
 
 ## Passo 4: o cliente escolhe o frete e fecha o pedido
 
-**Cena:** a Maria escolhe "SEDEX, R$ 12,40, 3 dias" e finaliza. O B2C precisa **criar a remessa** na transportadora.
+**Cena:** a Maria escolhe "SEDEX, R$ 12,40, 3 dias" e finaliza. A loja precisa **criar a remessa** na transportadora.
 
 **Chamada** (o header `Idempotency-Key` é obrigatório; use o id do pedido):
 ```
-POST /api/v1/sellers/{seller}/remessas        Idempotency-Key: pedido-1001
+POST /api/v1/remessas        Idempotency-Key: pedido-1001
 { "cotacao_id": "…", "transportadora": "correios", "servico_codigo": "03220", "numero_pedido": "PED-1001",
   "remetente":    { "nome": "Loja do João Ltda", "documento": "11222333000181", "telefone": "3138810000", "endereco": { … } },
   "destinatario": { "nome": "Maria da Silva", "documento": "52998224725", "telefone": "31987654321", "endereco": { … } } }
 ```
 
 **Por dentro:**
-1. [`RemessaRequest`](../app/Http/Requests/RemessaRequest.php#L14) valida tudo: CPF/CNPJ com dígito verificador, UF, telefone, tamanhos dos campos. Aceita máscara (`11.222.333/0001-81`).
+1. [`RemessaRequest`](../app/Http/Requests/RemessaRequest.php#L12) valida tudo: CPF/CNPJ com dígito verificador, UF, telefone, tamanhos dos campos. Aceita máscara (`11.222.333/0001-81`).
    O header vira um campo para ser validado como os outros.
-2. [`RemessaController::store`](../app/Http/Controllers/RemessaController.php#L17) → [`RemessaService::criarEnvio`](../app/Services/RemessaService.php#L38). Em ordem:
+2. [`RemessaController::store`](../app/Http/Controllers/RemessaController.php#L24) → [`RemessaService::criarEnvio`](../app/Services/RemessaService.php#L38). Em ordem:
    1. **Idempotência:** já existe remessa com essa chave? Mesmo pedido → devolve a que existe (200). Pedido diferente → 422.
-   2. Valida a cotação: existe, é deste seller, não expirou (404/422).
+   2. Valida a cotação: existe, é deste cliente, não expirou (404/422).
    3. A opção escolhida (transportadora + serviço) está na cotação? E os CEPs são os da cotação? (o preço foi calculado para eles; senão 422.)
-   4. [`reservar`](../app/Services/RemessaService.php#L261): **grava** a remessa com status `criando` **antes** de falar com a transportadora.
-      A constraint única `(seller_id, idempotency_key)` do banco garante que, se duas chamadas iguais chegarem juntas, **só uma** passa.
-   5. [`criarNaTransportadora`](../app/Services/RemessaService.php#L275): cria a classe da transportadora e chama **`criarRemessa($remessa)`**.
+   4. [`reservar`](../app/Services/RemessaService.php#L257): **grava** a remessa com status `criando` **antes** de falar com a transportadora.
+      A constraint única `(cliente_id, idempotency_key)` do banco garante que, se duas chamadas iguais chegarem juntas, **só uma** passa.
+   5. [`criarNaTransportadora`](../app/Services/RemessaService.php#L271): cria a classe da transportadora e chama **`criarRemessa($remessa)`**.
       - Deu certo: guarda `id_externo`, `codigo_rastreio` (um por volume) e, se vier, o PDF da etiqueta (no disco, nunca no banco). Status vira `criada`.
       - Deu erro: **apaga a reserva** (a chave fica livre para nova tentativa) e devolve 422 (`remessa_recusada`) ou 502 (`transportadora_indisponivel`).
 3. [`RemessaResource`](../app/Http/Resources/RemessaResource.php) monta a resposta (201; ou 200 com `Idempotent-Replayed: true` se foi repetição).
@@ -219,7 +256,7 @@ POST /api/v1/sellers/{seller}/remessas        Idempotency-Key: pedido-1001
 **Por que gravar antes de chamar a transportadora?** Se chamássemos primeiro, duas requisições simultâneas criariam **dois pedidos** (e dois fretes pagos) antes de qualquer uma gravar.
 
 **O que a transportadora recebe:** um array já pronto e **normalizado** (ver [formatos](#os-formatos-de-dados)): pessoas, volumes, serviço. Ela só **traduz** para o formato dela e envia.
-Exemplos: a [Jadlog](../app/Transportadoras/Jadlog.php#L233) cria **um** pedido para todos os volumes; os [Correios](../app/Transportadoras/Correios.php#L220) criam **uma pré-postagem por volume** (cada uma com seu código de rastreio) e, se um volume falhar, cancelam os que já criou.
+Exemplos: a [Jadlog](../app/Transportadoras/Jadlog.php#L17) cria **um** pedido para todos os volumes; os [Correios](../app/Transportadoras/Correios.php#L23) criam **uma pré-postagem por volume** (cada uma com seu código de rastreio) e, se um volume falhar, cancelam os que já criou.
 
 **Transportadora nova aqui?** **Sim**: implementa `criarRemessa`.
 
@@ -229,10 +266,10 @@ Exemplos: a [Jadlog](../app/Transportadoras/Jadlog.php#L233) cria **um** pedido 
 
 **Chamada:**
 ```
-GET /api/v1/sellers/{seller}/remessas/{id}/etiqueta        →  PDF
+GET /api/v1/remessas/{id}/etiqueta        →  PDF
 ```
 
-**Por dentro:** [`RemessaController::etiqueta`](../app/Http/Controllers/RemessaController.php#L42) → [`RemessaService::etiqueta`](../app/Services/RemessaService.php#L213):
+**Por dentro:** [`RemessaController::etiqueta`](../app/Http/Controllers/RemessaController.php#L49) → [`RemessaService::etiqueta`](../app/Services/RemessaService.php#L209):
 1. Se o PDF já está no disco (a Jadlog devolve na criação), devolve.
 2. Senão, chama **`etiqueta($remessa)`** da transportadora (os Correios geram sob demanda, de forma assíncrona), guarda no disco e devolve.
 3. Se a transportadora devolve `null`: 404 `etiqueta_indisponivel`.
@@ -245,9 +282,9 @@ O disco é configurável (`ETIQUETAS_DISK`): hoje local, depois S3, sem mudar o 
 
 ## Passo 6: a loja entrega o pacote (despachar)
 
-**Chamada:** `POST /api/v1/sellers/{seller}/remessas/{id}/despachar`
+**Chamada:** `POST /api/v1/remessas/{id}/despachar`
 
-**Por dentro:** [`RemessaService::despachar`](../app/Services/RemessaService.php#L178): confere no [enum `StatusRemessa`](../app/Enums/StatusRemessa.php#L24) se pode (`criada → despachada`) e **só muda o status**. Não chama a transportadora.
+**Por dentro:** [`RemessaService::despachar`](../app/Services/RemessaService.php#L174): confere no [enum `StatusRemessa`](../app/Enums/StatusRemessa.php#L14) se pode (`criada → despachada`) e **só muda o status**. Não chama a transportadora.
 
 **Transportadora nova aqui?** Não.
 
@@ -255,9 +292,9 @@ O disco é configurável (`ETIQUETAS_DISK`): hoje local, depois S3, sem mudar o 
 
 ## Passo 7 (alternativo): o cliente desiste, cancelar
 
-**Chamada:** `POST /api/v1/sellers/{seller}/remessas/{id}/cancelar`
+**Chamada:** `POST /api/v1/remessas/{id}/cancelar`
 
-**Por dentro:** [`RemessaService::cancelar`](../app/Services/RemessaService.php#L191):
+**Por dentro:** [`RemessaService::cancelar`](../app/Services/RemessaService.php#L187):
 1. O status permite? (só `criada` ou `despachada`; `em_transito` ou `entregue` = 409.)
 2. Chama **`cancelarRemessa($remessa)`** da transportadora. **Só depois** de ela confirmar, muda o status para `cancelada`. Se ela recusar, a remessa continua como estava (422).
 3. Cancelar algo que **já está cancelado** na transportadora **não é erro** (o resultado que queremos já existe).
@@ -272,13 +309,13 @@ O disco é configurável (`ETIQUETAS_DISK`): hoje local, depois S3, sem mudar o 
 
 **Chamada** (também com `Idempotency-Key`):
 ```
-POST /api/v1/sellers/{seller}/devolucoes        { "remessa_id": "…", "motivo": "Produto com defeito" }
+POST /api/v1/devolucoes        { "remessa_id": "…", "motivo": "Produto com defeito" }
 ```
 
-**Por dentro:** [`DevolucaoController::store`](../app/Http/Controllers/DevolucaoController.php#L17) → [`RemessaService::criarDevolucao`](../app/Services/RemessaService.php#L113):
+**Por dentro:** [`DevolucaoController::store`](../app/Http/Controllers/DevolucaoController.php#L24) → [`RemessaService::criarDevolucao`](../app/Services/RemessaService.php#L111):
 1. Mesma idempotência do passo 4.
-2. A remessa original existe, é do seller e está `entregue`? (senão 404 / 422.) Já existe devolução ativa para ela? (409.)
-3. **Inverte** remetente e destinatário (quem recebeu agora envia; o seller recebe) e usa a **mesma transportadora e serviço**.
+2. A remessa original existe, é do cliente e está `entregue`? (senão 404 / 422.) Já existe devolução ativa para ela? (409.)
+3. **Inverte** remetente e destinatário (quem recebeu agora envia; a loja recebe) e usa a **mesma transportadora e serviço**.
 4. Reaproveita `reservar` e `criarNaTransportadora`, ou seja, chama o **mesmo `criarRemessa`** da transportadora, só com `tipo = 'devolucao'`.
    (A Jadlog, por exemplo, usa `servico = 2` / Dropoff quando `tipo` é devolução: [veja a Jadlog](../app/Transportadoras/Jadlog.php#L233).)
 
@@ -290,7 +327,7 @@ POST /api/v1/sellers/{seller}/devolucoes        { "remessa_id": "…", "motivo":
 
 | Passo | Rota | O que o Hub faz sozinho | O que a **transportadora nova** implementa |
 |---|---|---|---|
-| 0 | `transportadora:configurar` | pergunta, valida e guarda criptografado | `perguntas()` e `regras()` |
+| 0 | `PUT /transportadoras/{t}` (ou `transportadora:configurar`) | valida e guarda criptografado, por cliente | `perguntas()` e `regras()` |
 | 1 | `GET /enderecos/{cep}` | consulta o ViaCEP | nada |
 | 2 | `GET .../pontos-retirada` | junta quem oferece | `PontosDeRetirada` (opcional) |
 | 3 | `POST .../cotacoes` | envia tudo em paralelo, ordena, salva | `pedidosDeCotacao()` e `lerCotacao()` |
@@ -301,6 +338,10 @@ POST /api/v1/sellers/{seller}/devolucoes        { "remessa_id": "…", "motivo":
 | 8 | `POST .../devolucoes` | inverte as partes, reaproveita o passo 4 | nada novo (usa `criarRemessa` com `tipo = devolucao`) |
 
 **Ou seja: a transportadora nova implementa 8 pequenos métodos (+ 1 opcional) e mais nada no sistema muda.**
+
+**Listagens:** `GET /remessas` e `GET /devolucoes` ([`RemessaController::index`](../app/Http/Controllers/RemessaController.php), [`DevolucaoController::index`](../app/Http/Controllers/DevolucaoController.php))
+mostram os envios (ou devoluções) **do cliente**, mais novos primeiro, 50 por página, com o filtro opcional `?status=criada`. A consulta parte do cliente, como todas as outras.
+Não envolvem a transportadora, então uma transportadora nova não implementa nada para elas.
 
 ---
 
@@ -350,7 +391,7 @@ Crie `app/Transportadoras/NomeDaTransportadora.php` (copie o [modelo](#modelo-de
 
 ## Etapa D: cotação
 
-Implemente os dois métodos (leia como a [Jadlog](../app/Transportadoras/Jadlog.php#L84) faz).
+Implemente os dois métodos (leia como a [Jadlog](../app/Transportadoras/Jadlog.php#L17) faz).
 
 **`pedidosDeCotacao(array $dados): array`** devolve uma **lista de chamadas**, sem enviar nada:
 ```php
@@ -376,13 +417,13 @@ Passos recomendados dentro dele (copie a estrutura da Jadlog):
 4. Se **nenhuma** resposta serviu, `throw new TransportadoraIndisponivel($motivo)`. Se a transportadora respondeu "não atendo este CEP" (erro de negócio), lance `new TransportadoraIndisponivel('sem_cobertura')`.
 5. Devolva a lista de opções.
 
-> `pedidosDeCotacao` e `lerCotacao` **não guardam estado** entre si (a mesma classe pode ser criada de novo entre as duas). Se precisar relacionar pedido e resposta, use a `chave`, ou recalcule a partir de `$dados` (os [Correios](../app/Transportadoras/Correios.php#L434) fazem isso em `entradasDePreco`).
+> `pedidosDeCotacao` e `lerCotacao` **não guardam estado** entre si (a mesma classe pode ser criada de novo entre as duas). Se precisar relacionar pedido e resposta, use a `chave`, ou recalcule a partir de `$dados` (os [Correios](../app/Transportadoras/Correios.php#L23) fazem isso em `entradasDePreco`).
 
 ## Etapa E: remessa, cancelamento e etiqueta
 
 **`criarRemessa(array $remessa): array`**: monte o JSON da transportadora a partir dos dados normalizados e envie com `$this->http->enviar(...)` (nunca com `Http::` direto):
 ```php
-$resposta = $this->http->enviar($this->sellerId, 'nova', 'criar_remessa', [
+$resposta = $this->http->enviar($this->clienteId, 'nova', 'criar_remessa', [
     'metodo' => 'POST', 'url' => ..., 'headers' => ..., 'corpo' => [...],
 ]);
 ```
@@ -407,11 +448,11 @@ Valide que é PDF de verdade antes de devolver (`str_starts_with($pdf, '%PDF')`)
 ## Etapa F: pontos de retirada (opcional)
 
 Se a transportadora tiver, a classe passa a `implements Transportadora, PontosDeRetirada` e implementa `pontosDeRetirada(string $cep, ?string $tipos = null): array`
-(formato do retorno no docblock da [interface](../app/Transportadoras/PontosDeRetirada.php)). Não precisa registrar nada: o [`ConsultasService`](../app/Services/ConsultasService.php#L32) a descobre sozinho.
+(formato do retorno no docblock da [interface](../app/Transportadoras/PontosDeRetirada.php)). Não precisa registrar nada: o [`ConsultasService`](../app/Services/ConsultasService.php#L14) a descobre sozinho.
 
 ## Etapa G: o simulador (modo mock)
 
-Sem isso, nenhum teste nem o desenvolvimento funcionam (não temos contas reais). O [`SimuladorHttp`](../app/Transportadoras/Mock/SimuladorHttp.php#L38) intercepta as chamadas HTTP e responde com arquivos.
+Sem isso, nenhum teste nem o desenvolvimento funcionam (não temos contas reais). O [`SimuladorHttp`](../app/Transportadoras/Mock/SimuladorHttp.php#L19) intercepta as chamadas HTTP e responde com arquivos.
 1. Crie `app/Transportadoras/Mock/fixtures/nova/` com **cópias dos exemplos da documentação** da transportadora (sucesso e erro), no formato exato.
 2. Em [`SimuladorHttp::responder`](../app/Transportadoras/Mock/SimuladorHttp.php#L38), acrescente uma linha no `match` para cada URL da transportadora nova e um método privado que devolve a fixture
    (copie [`jadlogFrete`](../app/Transportadoras/Mock/SimuladorHttp.php#L63) como modelo). Use `self::cenario($cep)` e `self::falhaComum(...)` para os cenários de timeout, erro 500 etc. por CEP.
@@ -424,7 +465,7 @@ Sem isso, nenhum teste nem o desenvolvimento funcionam (não temos contas reais)
    - a leitura da cotação em **sucesso** (valores em centavos);
    - **cada falha** (sem resposta, credencial recusada, erro 500, resposta quebrada, sem cobertura);
    - criar, cancelar (inclusive "já cancelado") e etiqueta.
-2. No `TestCase`, crie um helper `configurarNova($seller)` (copie `configurarJadlog`).
+2. No `TestCase`, crie um helper `configurarNova($cliente)` (copie `configurarJadlog`).
 3. Rode **`docker/scripts/test.sh`**. Os testes antigos têm de continuar passando.
 4. Acrescente a transportadora no [README](../README.md) (seção 3.1 e tabela de erros, se houver código novo) e anote dúvidas em [premissas](premissas-das-transportadoras.md).
 5. Rode a [collection do Postman](postman/frete-hub.postman_collection.json) (precisa de `up.sh` antes, para a imagem pegar o código novo).
@@ -471,7 +512,7 @@ class NovaTransportadora implements Transportadora
     public function __construct(
         private readonly CredencialTransportadora $credencial,
         private readonly ClienteHttp $http,
-        private readonly ?string $sellerId = null,
+        private readonly ?string $clienteId = null,
     ) {
     }
 
@@ -526,7 +567,7 @@ class NovaTransportadora implements Transportadora
 
     public function criarRemessa(array $remessa): array
     {
-        $resposta = $this->http->enviar($this->sellerId, 'nova', 'criar_remessa', [
+        $resposta = $this->http->enviar($this->clienteId, 'nova', 'criar_remessa', [
             'metodo' => 'POST',
             'url' => config('transportadoras.nova.url').'/pedidos',
             'headers' => $this->cabecalhos(),
@@ -541,7 +582,7 @@ class NovaTransportadora implements Transportadora
 
         $json = $resposta->json();
 
-        // Recusa de negocio (dados invalidos, CEP sem cobertura...): erro 422 para o B2C, SEM repetir o texto da transportadora.
+        // Recusa de negocio (dados invalidos, CEP sem cobertura...): erro 422 para o cliente, SEM repetir o texto da transportadora.
         if (isset($json['erro'])) {
             throw new ErroDeNegocio('remessa_recusada', 'A transportadora recusou a remessa.', 422, ['motivo' => 'recusada']);
         }
@@ -609,7 +650,7 @@ Quem **paga** o frete não vem aí: é o titular do contrato, e fica na configur
 
 ## Que erro lançar em cada situação
 
-| Situação | O que fazer | O B2C vê |
+| Situação | O que fazer | O cliente vê |
 |---|---|---|
 | Timeout, sem resposta | `TransportadoraIndisponivel('sem_resposta')` (use `motivoDaResposta`) | cotação: em `falhas`; remessa: 502 |
 | Token/senha recusados (401/403) | `TransportadoraIndisponivel('credencial_invalida')` | idem |

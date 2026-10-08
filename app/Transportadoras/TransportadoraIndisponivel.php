@@ -10,7 +10,7 @@ use RuntimeException;
 
 /**
  * A transportadora nao respondeu como esperado (fora do ar, lenta, credencial recusada, resposta estranha).
- * $motivo e um codigo curto e seguro para devolver ao seller:
+ * $motivo e um codigo curto e seguro para devolver ao cliente:
  *   sem_resposta | credencial_invalida | resposta_invalida | erro_na_transportadora | sem_cobertura
  */
 class TransportadoraIndisponivel extends RuntimeException
@@ -20,7 +20,7 @@ class TransportadoraIndisponivel extends RuntimeException
         parent::__construct($detalheInterno !== '' ? $detalheInterno : $motivo);
     }
 
-    /** Versao segura para devolver ao seller (HTTP 502): so o motivo, sem detalhes da transportadora. */
+    /** Versao segura para devolver ao cliente (HTTP 502): so o motivo, sem detalhes da transportadora. */
     public function paraErroDeNegocio(): ErroDeNegocio
     {
         return new ErroDeNegocio('transportadora_indisponivel', 'A transportadora nao respondeu. Tente novamente.', 502, ['motivo' => $this->motivo]);

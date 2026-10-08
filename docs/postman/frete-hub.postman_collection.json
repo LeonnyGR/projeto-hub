@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Frete Hub",
-    "description": "API de frete (Jadlog e Correios).\n\nComo usar:\n1. Em Variables (aba da collection), preencha `api_key` com a chave do B2C (comando `cliente:create`) e confira `base_url`.\n2. As credenciais das transportadoras sao cadastradas pela TI por comando (`transportadora:configurar`); a pasta 1 so confere. Rode as pastas na ordem: 1, 2 (seller), 3 Consultas, 4 Cotações, 5 Remessas, 6 Devoluções.\n3. As variáveis `seller_id`, `cotacao_id`, `remessa_id` etc. se preenchem sozinhas. Para usar outro seller, troque `seller_id`.",
+    "description": "API de frete (Jadlog e Correios), multi-tenant: cada cliente usa o proprio contrato com as transportadoras.\n\nExistem 3 portas de entrada:\n- Administracao (/api/v1/admin, so nos): Bearer {{admin_token}} (o ADMIN_API_TOKEN do .env do servidor).\n- Chave de API (/api/v1, backend do cliente): Bearer {{api_key}} (ja configurado na collection).\n- Portal (/api/v1/portal, pessoas do cliente): login com e-mail e senha; o Postman guarda o cookie de sessao sozinho.\n\nComo usar:\n1. Em Variables (aba da collection), preencha `base_url` e `admin_token`.\n2. Rode '0 - Administracao (so nos) > Criar cliente (com dono)': cria o cliente e o dono (usa `dono_email` e `dono_senha`; o e-mail e unico, troque se ja existir) e grava `cliente_id`.\n3. Rode 'Portal > Login (dono)' (o cookie fica guardado) e depois 'Portal > Criar chave de API': o texto da chave e gravado em `api_key` (aparece UMA vez na resposta).\n4. Rode as pastas na ordem: 1 Conta, 2 Transportadoras do cliente, 3 Consultas, 4 Cotacoes, 5 Remessas, 6 Devolucoes. As variaveis `cotacao_id`, `remessa_id` etc. se preenchem sozinhas.\n5. O CEP de origem nao fica no cadastro do cliente: informe `cep_origem` em cada cotacao.\nPara ver o 403: crie um operador (pasta Portal), faca 'Login (operador)' e tente 'Listar chaves de API'.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,20 +16,12 @@
   },
   "variable": [
     {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
       "key": "base_url",
       "value": "http://devb:8090"
-    },
-    {
-      "key": "api_key",
-      "value": ""
-    },
-    {
-      "key": "seller_id",
-      "value": ""
-    },
-    {
-      "key": "codigo_externo",
-      "value": ""
     },
     {
       "key": "cep_origem",
@@ -61,6 +53,38 @@
     },
     {
       "key": "idempotency_key",
+      "value": ""
+    },
+    {
+      "key": "cliente_id",
+      "value": ""
+    },
+    {
+      "key": "api_key",
+      "value": ""
+    },
+    {
+      "key": "dono_email",
+      "value": "joao@lojadojoao.com.br"
+    },
+    {
+      "key": "dono_senha",
+      "value": "uma-senha-com-10-ou-mais"
+    },
+    {
+      "key": "operador_email",
+      "value": "maria@lojadojoao.com.br"
+    },
+    {
+      "key": "operador_senha",
+      "value": "senha-provisoria-1"
+    },
+    {
+      "key": "chave_id",
+      "value": ""
+    },
+    {
+      "key": "operador_id",
       "value": ""
     }
   ],
@@ -103,9 +127,1010 @@
       ]
     },
     {
-      "name": "1 - Transportadoras do B2C",
-      "description": "Cadastro do contrato do B2C com as transportadoras. Token e senha nunca voltam nas respostas.",
+      "name": "0 - Administracao (so nos)",
+      "description": "Rotas de administracao: cadastram e gerenciam clientes. So para nos (administradores do hub).\n\nUsam `Authorization: Bearer {{admin_token}}` (o ADMIN_API_TOKEN do .env do servidor, minimo 32 caracteres). Esse token e mais poderoso que uma chave de API: nao compartilhe.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{admin_token}}",
+            "type": "string"
+          }
+        ]
+      },
       "item": [
+        {
+          "name": "Criar cliente (com dono)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/clientes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "clientes"
+              ]
+            },
+            "description": "Cria o cliente (nome e CNPJ; o CNPJ e unico e precisa ser valido) E o usuario dono dele (adm_tenant). A resposta (201) traz o cliente e o dono (sem senha). O e-mail do dono e unico no sistema e a senha tem no minimo 10 caracteres. O script de teste grava `cliente_id`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Loja do João\",\n  \"cnpj\": \"12345678000195\",\n  \"dono\": {\n    \"nome\": \"João da Silva\",\n    \"email\": \"{{dono_email}}\",\n    \"password\": \"{{dono_senha}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cliente criado (201)', () => pm.response.to.have.status(201));",
+                  "const dados = pm.response.json().data;",
+                  "// O campo do id do cliente na resposta ainda se chama client_id (nome herdado do modelo anterior).",
+                  "pm.collectionVariables.set('cliente_id', dados.id);",
+                  "pm.test('Dono criado como adm_tenant', () => pm.expect(dados.dono.papel).to.eql('adm_tenant'));",
+                  "pm.test('Nunca devolve senha', () => pm.expect(JSON.stringify(dados)).to.not.include('password'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar clientes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/clientes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "clientes"
+              ]
+            },
+            "description": "Lista paginada (50 por pagina): id, nome, cnpj e ativo.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ver cliente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/clientes/{{cliente_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "clientes",
+                "{{cliente_id}}"
+              ]
+            },
+            "description": "Mostra um cliente pelo id.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Atualizar cliente (nome, cnpj, ativo)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/clientes/{{cliente_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "clientes",
+                "{{cliente_id}}"
+              ]
+            },
+            "description": "Muda nome, cnpj e/ou ativo. Com ativo=false o cliente inteiro e bloqueado: chaves de API dao 401 e o dono e os operadores perdem o acesso ao portal na hora. Todos os campos sao opcionais.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Loja do João LTDA\",\n  \"cnpj\": \"12345678000195\",\n  \"ativo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portal (dono e operadores)",
+      "description": "Rotas das pessoas do cliente. Autenticacao por cookie de sessao (o Postman guarda o cookie do Login sozinho; essas requisicoes nao usam a chave de API). Ordem: Login (dono) > Criar chave de API > ... Rotas marcadas 'so dono' dao 403 para operador.",
+      "item": [
+        {
+          "name": "Login (dono)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "login"
+              ]
+            },
+            "description": "Entra com o e-mail e a senha do dono (variaveis `dono_email` e `dono_senha`). O Postman guarda o cookie de sessao (HttpOnly) sozinho e o envia nas proximas chamadas. Limite: 5 tentativas por minuto por e-mail + IP. Qualquer falha devolve o mesmo 401.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{dono_email}}\",\n  \"password\": \"{{dono_senha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login ok (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Papel do dono', () => pm.expect(pm.response.json().data.papel).to.eql('adm_tenant'));",
+                  "pm.test('Nunca devolve senha', () => pm.expect(pm.response.text()).to.not.include('password'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quem sou eu",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/eu",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "eu"
+              ]
+            },
+            "description": "Mostra o usuario logado e o cliente dele.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Trocar minha senha",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/eu/senha",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "eu",
+                "senha"
+              ]
+            },
+            "description": "Troca a PROPRIA senha. A nova precisa ter 10+ caracteres e ser diferente da atual. Responde 204. ATENCAO: se trocar, atualize `dono_senha` (ou `operador_senha`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senha_atual\": \"{{dono_senha}}\",\n  \"nova_senha\": \"outra-senha-bem-longa-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "logout"
+              ]
+            },
+            "description": "Encerra a sessao (204). Depois disso, as chamadas do portal voltam a dar 401 ate novo login.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar chave de API (só dono)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/chaves",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "chaves"
+              ]
+            },
+            "description": "Cria uma chave de API (so o dono). O texto completo aparece UMA UNICA VEZ, no campo `chave`. O script grava em `api_key` e o id em `chave_id`. Perdeu a chave? Crie outra e revogue a antiga.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"producao\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Chave criada (201)', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('api_key', d.chave);",
+                  "pm.collectionVariables.set('chave_id', d.id);",
+                  "pm.test('Formato fs_<prefixo>.<segredo>', () => pm.expect(d.chave).to.match(/^fs_[0-9a-f]+\\./));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar chaves de API (só dono)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/chaves",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "chaves"
+              ]
+            },
+            "description": "Lista as chaves do cliente: id, nome, prefixo, ultimo_uso_em, revogada_em. Nunca mostra o segredo. Operador recebe 403.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revogar chave de API (só dono)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/chaves/{{chave_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "chaves",
+                "{{chave_id}}"
+              ]
+            },
+            "description": "Revoga a chave de `chave_id`: quem a usa passa a receber 401. As outras chaves continuam. Se revogar a chave que esta em `api_key`, crie outra antes de seguir com as pastas 1 a 7.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar usuários (só dono)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios"
+              ]
+            },
+            "description": "Lista os usuarios do cliente (dono e operadores).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar operador (só dono)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios"
+              ]
+            },
+            "description": "Cadastra um operador (operador_tenant). E-mail unico no sistema (guardado em minusculas); senha com 10+ caracteres. O script grava `operador_id`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria Operadora\",\n  \"email\": \"{{operador_email}}\",\n  \"password\": \"{{operador_senha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Operador criado (201)', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('operador_id', d.id);",
+                  "pm.test('Papel operador', () => pm.expect(d.papel).to.eql('operador_tenant'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar operador: bloquear (só dono)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios/{{operador_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios",
+                "{{operador_id}}"
+              ]
+            },
+            "description": "Muda nome, ativo e/ou password de um operador do mesmo cliente. Com ativo=false ele perde o acesso na hora. Use ativo=true para liberar de novo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativo\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar operador: redefinir senha (só dono)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios/{{operador_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios",
+                "{{operador_id}}"
+              ]
+            },
+            "description": "Redefine a senha do operador (10+ caracteres).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{operador_senha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (operador)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "login"
+              ]
+            },
+            "description": "Entra como operador (o dono precisa ter criado e liberado o operador). Depois tente \"Listar chaves de API\": deve dar 403. Para voltar ao dono, rode \"Login (dono)\".",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{operador_email}}\",\n  \"password\": \"{{operador_senha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login ok (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Papel operador', () => pm.expect(pm.response.json().data.papel).to.eql('operador_tenant'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Operador tenta listar chaves (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/chaves",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "chaves"
+              ]
+            },
+            "description": "Com o login de operador, a rota de dono responde 403 proibido.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar remessas (portal)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/remessas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "remessas"
+              ]
+            },
+            "description": "O dia a dia usa as mesmas rotas da chave de API, sob /portal e com o cookie. Dono e operador podem.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar devoluções (portal)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/devolucoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "devolucoes"
+              ]
+            },
+            "description": "Idem, para devolucoes. Aceita ?status=.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar conta (portal)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/conta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "conta"
+              ]
+            },
+            "description": "A conta do cliente do usuario logado.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Catalogo de campos (portal)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/transportadoras/catalogo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "transportadoras",
+                "catalogo"
+              ]
+            },
+            "description": "O mesmo catalogo, pela sessao do portal (dono e operador).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver credenciais (pede a senha do dono)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/transportadoras/jadlog/credenciais",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "transportadoras",
+                "jadlog",
+                "credenciais"
+              ]
+            },
+            "description": "So o dono, so no portal (nao existe na chave de API). Pede a senha do dono de novo: senha errada = 422 senha_incorreta; operador = 403; transportadora nao cadastrada = 404; limite LIMITE_REVELAR_MIN (padrao 5 por minuto por usuario) = 429. Cada consulta fica no log. Rode antes 'Login (dono)' e cadastre a Jadlog.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{dono_senha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Traz as credenciais inteiras', () => pm.expect(pm.response.json().data.credenciais).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 - Conta",
+      "description": "Dados do cliente da chave de API (Bearer {{api_key}}). Nenhuma resposta traz segredo. A mesma rota existe no portal (/portal/conta).",
+      "item": [
+        {
+          "name": "Consultar conta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/conta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "conta"
+              ]
+            },
+            "description": "Mostra o id, nome, cnpj e ativo do cliente da chave. O CEP de origem nao faz parte da conta: vai em cada cotacao."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Nunca devolve segredo', () => { const t = JSON.stringify(r); pm.expect(t).to.not.include('secret'); pm.expect(t).to.not.include('password'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 - Transportadoras do cliente",
+      "description": "Cadastro do contrato do PROPRIO cliente com as transportadoras (cada cliente tem o seu). Token e senha nunca voltam nas respostas.",
+      "item": [
+        {
+          "name": "Catalogo de campos (formulario)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/catalogo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "catalogo"
+              ]
+            },
+            "description": "As transportadoras que o hub atende e os campos de cadastro de cada uma (campo com caminho pontuado, grupo, titulo, tipo texto|secreto|servicos|select, obrigatorio, padrao, ajuda, opcoes). O portal monta o formulario a partir disso. Tambem existe em /portal/transportadoras/catalogo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('Tem jadlog e correios', () => pm.expect(d.map(t => t.codigo)).to.include.members(['jadlog','correios']));"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "Listar transportadoras cadastradas",
           "request": {
@@ -122,7 +1147,38 @@
                 "transportadoras"
               ]
             },
-            "description": "Mostra as transportadoras cadastradas para o B2C (sem token nem senha). Se a lista vier vazia, cadastre com o PUT abaixo antes de cotar."
+            "description": "Mostra as transportadoras cadastradas por este cliente (sem token nem senha). Se a lista vier vazia, cadastre com o PUT abaixo antes de cotar. Cada transportadora traz `credenciais_mascaradas` (ex.: \"••••••1234\"), nunca o valor inteiro."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar uma transportadora (preenche o formulario de edicao)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/correios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "correios"
+              ]
+            },
+            "description": "Devolve a configuracao inteira e as credenciais so mascaradas (credenciais_mascaradas). A tela usa isso para preencher o formulario de edicao. 404 transportadora_nao_cadastrada se ainda nao foi cadastrada. No portal: /portal/transportadoras/correios."
           },
           "event": [
             {
@@ -148,7 +1204,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"credenciais\": {\n    \"token\": \"token-da-jadlog\"\n  },\n  \"configuracao\": {\n    \"tomador\": {\n      \"nome\": \"Bartofil Comercio Ltda\",\n      \"documento\": \"12345678000195\",\n      \"telefone\": \"1133334444\",\n      \"endereco\": {\n        \"cep\": \"01001000\",\n        \"logradouro\": \"Praca da Se\",\n        \"numero\": \"1\",\n        \"bairro\": \"Se\",\n        \"cidade\": \"Sao Paulo\",\n        \"uf\": \"SP\"\n      }\n    },\n    \"cod_cliente\": \"000123\",\n    \"tipo_coleta\": \"K\",\n    \"servicos\": [\n      {\n        \"codigo\": \"3\",\n        \"nome\": \"Package\"\n      },\n      {\n        \"codigo\": \"0\",\n        \"nome\": \"Expresso\"\n      }\n    ]\n  }\n}"
+              "raw": "{\n  \"credenciais\": {\n    \"token\": \"token-da-jadlog\"\n  },\n  \"configuracao\": {\n    \"tomador\": {\n      \"nome\": \"Loja Exemplo Comercio Ltda\",\n      \"documento\": \"12345678000195\",\n      \"telefone\": \"1133334444\",\n      \"endereco\": {\n        \"cep\": \"01001000\",\n        \"logradouro\": \"Praca da Se\",\n        \"numero\": \"1\",\n        \"bairro\": \"Se\",\n        \"cidade\": \"Sao Paulo\",\n        \"uf\": \"SP\"\n      }\n    },\n    \"cod_cliente\": \"000123\",\n    \"tipo_coleta\": \"K\",\n    \"servicos\": [\n      {\n        \"codigo\": \"3\",\n        \"nome\": \"Package\"\n      },\n      {\n        \"codigo\": \"0\",\n        \"nome\": \"Expresso\"\n      }\n    ]\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/transportadoras/jadlog",
@@ -162,7 +1218,7 @@
                 "jadlog"
               ]
             },
-            "description": "Cadastra (201) ou substitui (200) a Jadlog. Sem 'credenciais', mantem as ja salvas."
+            "description": "Cadastra (201) ou edita (200) a Jadlog do cliente. O tomador e quem paga o frete (o titular do contrato). Na edicao, as 'credenciais' sao opcionais campo a campo: o que nao vier (ou vier em branco) mantem o valor salvo. No primeiro cadastro todas sao obrigatorias."
           },
           "event": [
             {
@@ -202,7 +1258,7 @@
                 "correios"
               ]
             },
-            "description": "Cadastra (201) ou substitui (200) os Correios. Sem 'credenciais', mantem as ja salvas."
+            "description": "Cadastra (201) ou edita (200) os Correios do cliente. Em `servicos`, so o que o cliente contratou (aqui SEDEX e PAC). Na edicao, as 'credenciais' sao opcionais campo a campo: para trocar so a senha, mande {\"credenciais\": {\"senha\": \"nova\"}}. No primeiro cadastro todas sao obrigatorias."
           },
           "event": [
             {
@@ -215,17 +1271,56 @@
               }
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "2 - Sellers",
-      "description": "",
-      "item": [
+        },
         {
-          "name": "Criar seller",
+          "name": "Editar so a senha dos Correios",
           "request": {
-            "method": "POST",
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"credenciais\": {\n    \"senha\": \"nova-senha-dos-correios\"\n  },\n  \"configuracao\": {\n    \"contrato\": \"9912345678\",\n    \"servicos\": [\n      {\"codigo\": \"03220\", \"nome\": \"SEDEX\"},\n      {\"codigo\": \"04669\", \"nome\": \"PAC\"}\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/correios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "correios"
+              ]
+            },
+            "description": "Edicao parcial: so a senha vai em 'credenciais'; usuario e cartao de postagem continuam como estavam. Rode depois do cadastro dos Correios."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Desativar Jadlog",
+          "request": {
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -233,20 +1328,21 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers",
+              "raw": "{{base_url}}/api/v1/transportadoras/jadlog",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers"
+                "transportadoras",
+                "jadlog"
               ]
             },
-            "description": "Cadastra o seller. O seller NAO recebe chave nem contrato: quem chama a API e o B2C e o contrato com as transportadoras e dele. `codigo_externo` e o id do seller no B2C (se repetir, a API responde 409 com o id que ja existe).",
+            "description": "Liga ou desliga a transportadora nas cotacoes, sem apagar os dados. 404 se ainda nao foi cadastrada.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nome\": \"Loja Exemplo\",\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"codigo_externo\": \"{{codigo_externo}}\"\n}",
+              "raw": "{\n  \"ativa\": false\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -256,68 +1352,19 @@
           },
           "event": [
             {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.collectionVariables.set('codigo_externo', 'postman-' + Date.now());"
-                ]
-              }
-            },
-            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const r = pm.response.json();",
-                  "pm.test('Seller criado (201)', () => pm.response.to.have.status(201));",
-                  "pm.collectionVariables.set('seller_id', r.data.id);"
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('ativa = false', () => pm.expect(pm.response.json().data.ativa).to.eql(false));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Consultar seller",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sellers",
-                "{{seller_id}}"
-              ]
-            },
-            "description": ""
-          }
-        },
-        {
-          "name": "Listar sellers",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/api/v1/sellers",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "sellers"
-              ]
-            },
-            "description": ""
-          }
-        },
-        {
-          "name": "Desabilitar seller",
+          "name": "Ativar Jadlog",
           "request": {
             "method": "PATCH",
             "header": [
@@ -327,31 +1374,43 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}",
+              "raw": "{{base_url}}/api/v1/transportadoras/jadlog",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}"
+                "transportadoras",
+                "jadlog"
               ]
             },
-            "description": "Seller desabilitado nao cota nem cria remessa. Rode 'Habilitar seller' em seguida.",
+            "description": "Liga ou desliga a transportadora nas cotacoes, sem apagar os dados. 404 se ainda nao foi cadastrada.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ativo\": false\n}",
+              "raw": "{\n  \"ativa\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('ativa = true', () => pm.expect(pm.response.json().data.ativa).to.eql(true));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Habilitar seller",
+          "name": "Desativar Correios",
           "request": {
             "method": "PATCH",
             "header": [
@@ -361,28 +1420,86 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}",
+              "raw": "{{base_url}}/api/v1/transportadoras/correios",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}"
+                "transportadoras",
+                "correios"
               ]
             },
-            "description": "",
+            "description": "Liga ou desliga a transportadora nas cotacoes, sem apagar os dados. 404 se ainda nao foi cadastrada.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ativo\": true\n}",
+              "raw": "{\n  \"ativa\": false\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('ativa = false', () => pm.expect(pm.response.json().data.ativa).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ativar Correios",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transportadoras/correios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transportadoras",
+                "correios"
+              ]
+            },
+            "description": "Liga ou desliga a transportadora nas cotacoes, sem apagar os dados. 404 se ainda nao foi cadastrada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativa\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('ativa = true', () => pm.expect(pm.response.json().data.ativa).to.eql(true));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -407,7 +1524,7 @@
                 "01001000"
               ]
             },
-            "description": "Consulta o ViaCEP (com cache de 7 dias). Aceita 01001000 ou 01001-000. Não depende de seller."
+            "description": "Consulta o ViaCEP (com cache de 7 dias). Aceita 01001000 ou 01001-000. Não depende de contrato com transportadora."
           }
         },
         {
@@ -416,15 +1533,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/pontos-retirada?cep=02031100&tipos=LOCKER,PUBLICO,JADLOG",
+              "raw": "{{base_url}}/api/v1/pontos-retirada?cep=02031100&tipos=LOCKER,PUBLICO,JADLOG",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "pontos-retirada"
               ],
               "query": [
@@ -458,19 +1573,17 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
-            "description": "Cota em todas as transportadoras do seller ao mesmo tempo. Valores em centavos. A cotação vale 15 minutos. `falhas` lista quem não respondeu (ou não atende o CEP).",
+            "description": "Cota em todas as transportadoras ativas do cliente ao mesmo tempo. Valores em centavos. A cotação vale 15 minutos. `falhas` lista quem não respondeu (ou não atende o CEP). `cep_origem` e opcional: sem ele vale o CEP da conta (PATCH /conta). `cep_origem` e obrigatorio em toda cotacao (quem chama informa de onde o pacote sai). Com varios vendedores/origens, faca uma cotacao por origem.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"cep_origem\": \"{{cep_origem}}\",\n  \"cep_destino\": \"{{cep_destino}}\",\n  \"valor_declarado_centavos\": 15000,\n  \"volumes\": [\n    {\n      \"peso_gramas\": 1200,\n      \"altura_cm\": 10,\n      \"largura_cm\": 20,\n      \"comprimento_cm\": 30\n    }\n  ]\n}",
@@ -510,15 +1623,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes/{{cotacao_id}}",
+              "raw": "{{base_url}}/api/v1/cotacoes/{{cotacao_id}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes",
                 "{{cotacao_id}}"
               ]
@@ -532,6 +1643,37 @@
       "name": "5 - Remessas",
       "description": "",
       "item": [
+        {
+          "name": "Listar remessas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/remessas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "remessas"
+              ]
+            },
+            "description": "Lista os envios do cliente, mais novos primeiro (50 por pagina). Filtro opcional: ?status=criada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Tem a lista em data', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "Criar remessa",
           "request": {
@@ -547,22 +1689,20 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas",
+              "raw": "{{base_url}}/api/v1/remessas",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas"
               ]
             },
             "description": "Cria a remessa na transportadora com a opção escolhida na cotação (rode 'Cotar frete' antes). A cada envio desta chamada o Postman gera uma Idempotency-Key nova.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Seller Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
+              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Cliente Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -609,22 +1749,20 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas",
+              "raw": "{{base_url}}/api/v1/remessas",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas"
               ]
             },
             "description": "Repete 'Criar remessa' com a MESMA Idempotency-Key: a API devolve a remessa original e não cria outra na transportadora.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Seller Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
+              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Cliente Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -651,15 +1789,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}",
+              "raw": "{{base_url}}/api/v1/remessas/{{remessa_id}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas",
                 "{{remessa_id}}"
               ]
@@ -673,15 +1809,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}/etiqueta",
+              "raw": "{{base_url}}/api/v1/remessas/{{remessa_id}}/etiqueta",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas",
                 "{{remessa_id}}",
                 "etiqueta"
@@ -696,21 +1830,19 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}/despachar",
+              "raw": "{{base_url}}/api/v1/remessas/{{remessa_id}}/despachar",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas",
                 "{{remessa_id}}",
                 "despachar"
               ]
             },
-            "description": "O seller avisa que entregou o pacote à transportadora (só muda o status)."
+            "description": "O cliente avisa que entregou o pacote à transportadora (só muda o status)."
           }
         },
         {
@@ -719,15 +1851,13 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas/{{remessa_id}}/cancelar",
+              "raw": "{{base_url}}/api/v1/remessas/{{remessa_id}}/cancelar",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas",
                 "{{remessa_id}}",
                 "cancelar"
@@ -743,6 +1873,37 @@
       "description": "",
       "item": [
         {
+          "name": "Listar devoluções",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/devolucoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "devolucoes"
+              ]
+            },
+            "description": "Lista as devolucoes do cliente, mais novas primeiro (50 por pagina). Filtro opcional: ?status=criada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Tem a lista em data', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Criar devolução",
           "request": {
             "method": "POST",
@@ -757,15 +1918,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/devolucoes",
+              "raw": "{{base_url}}/api/v1/devolucoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "devolucoes"
               ]
             },
@@ -801,15 +1960,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/devolucoes/{{devolucao_id}}",
+              "raw": "{{base_url}}/api/v1/devolucoes/{{devolucao_id}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "devolucoes",
                 "{{devolucao_id}}"
               ]
@@ -823,15 +1980,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/devolucoes/{{devolucao_id}}/etiqueta",
+              "raw": "{{base_url}}/api/v1/devolucoes/{{devolucao_id}}/etiqueta",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "devolucoes",
                 "{{devolucao_id}}",
                 "etiqueta"
@@ -857,15 +2012,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
@@ -892,15 +2045,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
@@ -927,15 +2078,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
@@ -962,15 +2111,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
@@ -997,15 +2144,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
@@ -1028,20 +2173,18 @@
       "description": "",
       "item": [
         {
-          "name": "Sem API key (401)",
+          "name": "Sem credenciais (401)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes/{{cotacao_id}}",
+              "raw": "{{base_url}}/api/v1/cotacoes/{{cotacao_id}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes",
                 "{{cotacao_id}}"
               ]
@@ -1049,6 +2192,47 @@
             "description": "",
             "auth": {
               "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chave de API errada (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cotacoes/{{cotacao_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cotacoes",
+                "{{cotacao_id}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "fs_000000000000.chave-errada",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -1074,22 +2258,20 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/remessas",
+              "raw": "{{base_url}}/api/v1/remessas",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "remessas"
               ]
             },
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Seller Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
+              "raw": "{\n  \"cotacao_id\": \"{{cotacao_id}}\",\n  \"transportadora\": \"{{transportadora}}\",\n  \"servico_codigo\": \"{{servico_codigo}}\",\n  \"numero_pedido\": \"PED-1001\",\n  \"remetente\": {\n    \"nome\": \"Loja do Cliente Ltda\",\n    \"documento\": \"11222333000181\",\n    \"telefone\": \"1133334444\",\n    \"email\": \"contato@loja.com.br\",\n    \"endereco\": {\n      \"cep\": \"{{cep_origem}}\",\n      \"logradouro\": \"Avenida Paulista\",\n      \"numero\": \"1000\",\n      \"complemento\": \"Sala 5\",\n      \"bairro\": \"Bela Vista\",\n      \"cidade\": \"Sao Paulo\",\n      \"uf\": \"SP\"\n    }\n  },\n  \"destinatario\": {\n    \"nome\": \"Maria da Silva\",\n    \"documento\": \"52998224725\",\n    \"telefone\": \"21987654321\",\n    \"email\": \"maria@exemplo.com\",\n    \"endereco\": {\n      \"cep\": \"{{cep_destino}}\",\n      \"logradouro\": \"Rua da Assembleia\",\n      \"numero\": \"10\",\n      \"bairro\": \"Centro\",\n      \"cidade\": \"Rio de Janeiro\",\n      \"uf\": \"RJ\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1120,15 +2302,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/sellers/{{seller_id}}/cotacoes",
+              "raw": "{{base_url}}/api/v1/cotacoes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "sellers",
-                "{{seller_id}}",
                 "cotacoes"
               ]
             },
@@ -1154,6 +2334,29 @@
               }
             }
           ]
+        },
+        {
+          "name": "Portal sem login (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/eu",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "eu"
+              ]
+            },
+            "description": "Sem cookie de sessao o portal responde 401. (Se voce ja fez login, o Postman envia o cookie: use uma janela/cookie limpo.)",
+            "auth": {
+              "type": "noauth"
+            }
+          }
         }
       ]
     }

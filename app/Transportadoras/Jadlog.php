@@ -29,13 +29,18 @@ class Jadlog implements Transportadora, PontosDeRetirada
             'configuracao.conta' => ['nullable', 'string', 'max:6'],
             'configuracao.contrato' => ['nullable', 'digits_between:1,12'],
             'configuracao.unidade_origem' => ['nullable', 'string', 'max:9'],
-            // K = a Jadlog coleta no seller; S = o seller leva o pacote ate a Jadlog
+            // K = a Jadlog coleta no cliente (lojista); S = o cliente leva o pacote ate a Jadlog
             'configuracao.tipo_coleta' => ['nullable', Rule::in(['K', 'S'])],
             // Modalidades contratadas (codigo numerico, como no PDF)
             'configuracao.servicos' => ['required', 'array', 'min:1', 'max:20'],
             'configuracao.servicos.*.codigo' => ['required', 'string', 'regex:/^\d{1,3}$/'],
             'configuracao.servicos.*.nome' => ['required', 'string', 'max:60'],
         ];
+    }
+
+    public static function nome(): string
+    {
+        return 'Jadlog';
     }
 
     public static function perguntas(): array
@@ -57,8 +62,10 @@ class Jadlog implements Transportadora, PontosDeRetirada
             ['campo' => 'configuracao.conta', 'rotulo' => 'Conta corrente Jadlog (Enter se nao for correntista)'],
             ['campo' => 'configuracao.contrato', 'rotulo' => 'Numero do contrato (Enter se nao tiver)'],
             ['campo' => 'configuracao.unidade_origem', 'rotulo' => 'Codigo da unidade (franquia) emissora (Enter se nao souber)'],
-            ['campo' => 'configuracao.tipo_coleta', 'rotulo' => 'Tipo de coleta: K = Jadlog coleta no seller, S = seller leva ate a Jadlog', 'padrao' => 'K'],
-            ['campo' => 'configuracao.servicos', 'rotulo' => 'Modalidades contratadas, no formato codigo:nome,codigo:nome (ex.: 3:Package,0:Expresso)', 'tipo' => 'servicos'],
+            ['campo' => 'configuracao.tipo_coleta', 'rotulo' => 'Tipo de coleta: K = Jadlog coleta no lojista, S = o lojista leva ate a Jadlog', 'padrao' => 'K',
+                'titulo' => 'Tipo de coleta', 'tipo' => 'select', 'opcoes' => ['K' => 'A Jadlog coleta no lojista', 'S' => 'O lojista leva ate a Jadlog']],
+            ['campo' => 'configuracao.servicos', 'rotulo' => 'Modalidades contratadas, no formato codigo:nome,codigo:nome (ex.: 3:Package,0:Expresso)', 'tipo' => 'servicos',
+                'titulo' => 'Modalidades contratadas', 'ajuda' => 'Lista de {codigo, nome}. Ex.: [{"codigo": "3", "nome": "Package"}, {"codigo": "0", "nome": "Expresso"}]'],
         ];
     }
 
@@ -71,8 +78,8 @@ class Jadlog implements Transportadora, PontosDeRetirada
     public function __construct(
         private readonly CredencialTransportadora $credencial,
         private readonly ClienteHttp $http,
-        // Seller em nome de quem estamos chamando (so para o historico de chamadas).
-        private readonly ?string $sellerId = null,
+        // Cliente em nome de quem estamos chamando (so para o historico de chamadas).
+        private readonly ?string $clienteId = null,
     ) {
     }
 
@@ -176,7 +183,7 @@ class Jadlog implements Transportadora, PontosDeRetirada
             throw new TransportadoraIndisponivel($motivo);
         }
 
-        // A Jadlog respondeu, mas so com erro de negocio (ex.: CEP fora da area): o seller precisa saber por que nao ha opcao.
+        // A Jadlog respondeu, mas so com erro de negocio (ex.: CEP fora da area): o cliente precisa saber por que nao ha opcao.
         if ($opcoes === [] && $semCobertura) {
             throw new TransportadoraIndisponivel('sem_cobertura');
         }
@@ -194,7 +201,7 @@ class Jadlog implements Transportadora, PontosDeRetirada
         $pedidos = array_intersect(array_map('trim', explode(',', strtoupper((string) $tipos))), self::TIPOS_DE_PONTO);
         $tipos = implode(',', $pedidos !== [] ? $pedidos : self::TIPOS_DE_PONTO);
 
-        $resposta = $this->http->enviar($this->sellerId, 'jadlog', 'pontos_retirada', [
+        $resposta = $this->http->enviar($this->clienteId, 'jadlog', 'pontos_retirada', [
             'metodo' => 'GET',
             'url' => config('transportadoras.jadlog.url_pontos').'/pudos/location',
             'headers' => $this->cabecalhos(),
@@ -269,7 +276,7 @@ class Jadlog implements Transportadora, PontosDeRetirada
             'shipmentId' => null,
             'vlColeta' => null,
             'rem' => $this->pessoa($remessa['remetente']),
-            // Tomador = quem paga o frete = titular do contrato (o B2C); expedidor = quem despacha o pacote.
+            // Tomador = quem paga o frete = titular do contrato (o cliente); expedidor = quem despacha o pacote.
             'tomador' => $this->pessoa($config['tomador']),
             'exp' => $this->pessoa($remessa['remetente']),
             'des' => $this->pessoa($remessa['destinatario']),
@@ -277,7 +284,7 @@ class Jadlog implements Transportadora, PontosDeRetirada
             'volume' => $volumes,
         ];
 
-        $resposta = $this->http->enviar($this->sellerId, 'jadlog', 'criar_remessa', [
+        $resposta = $this->http->enviar($this->clienteId, 'jadlog', 'criar_remessa', [
             'metodo' => 'POST',
             'url' => config('transportadoras.jadlog.url_embarcador').'/pedido/incluir',
             'headers' => $this->cabecalhos(),
@@ -321,7 +328,7 @@ class Jadlog implements Transportadora, PontosDeRetirada
 
     public function cancelarRemessa(array $remessa): void
     {
-        $resposta = $this->http->enviar($this->sellerId, 'jadlog', 'cancelar_remessa', [
+        $resposta = $this->http->enviar($this->clienteId, 'jadlog', 'cancelar_remessa', [
             'metodo' => 'POST',
             'url' => config('transportadoras.jadlog.url_embarcador').'/pedido/cancelar',
             'headers' => $this->cabecalhos(),
@@ -419,7 +426,7 @@ class Jadlog implements Transportadora, PontosDeRetirada
         return $pdf !== false && str_starts_with($pdf, '%PDF') ? $pdf : null;
     }
 
-    /** ['3' => 'Package', '0' => 'Expresso'] a partir da configuracao do seller. */
+    /** ['3' => 'Package', '0' => 'Expresso'] a partir da configuracao do cliente. */
     private function servicos(): array
     {
         return Transportadoras::servicosDaConfiguracao($this->credencial->configuracao);

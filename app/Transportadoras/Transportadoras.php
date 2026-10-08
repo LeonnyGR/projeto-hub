@@ -23,17 +23,51 @@ class Transportadoras
         return array_keys(self::LISTA);
     }
 
-    /** $sellerId: seller em nome de quem a chamada e feita (so para o historico de chamadas). */
-    public static function criar(CredencialTransportadora $credencial, ?string $sellerId = null): Transportadora
+    /**
+     * Catalogo para montar o formulario de cadastro no portal: as transportadoras que o hub atende e os campos de cada uma.
+     * Tudo vem das classes (perguntas() e regras()): quem adiciona uma transportadora nova ganha o formulario de graca.
+     */
+    public static function catalogo(): array
+    {
+        $catalogo = [];
+
+        foreach (self::LISTA as $codigo => $classe) {
+            $regras = $classe::regras();
+
+            $campos = array_map(function (array $pergunta) use ($regras) {
+                $campo = $pergunta['campo'];
+                $secreto = (bool) ($pergunta['secreto'] ?? false);
+
+                return [
+                    'campo' => $campo,
+                    // credenciais = segredos (token, senha); configuracao = o resto
+                    'grupo' => str_starts_with($campo, 'credenciais.') ? 'credenciais' : 'configuracao',
+                    'titulo' => $pergunta['titulo'] ?? trim((string) preg_replace('/\s*\(Enter[^)]*\)/', '', $pergunta['rotulo'])),
+                    'tipo' => $secreto ? 'secreto' : ($pergunta['tipo'] ?? 'texto'),
+                    'obrigatorio' => in_array('required', $regras[$campo] ?? [], true),
+                    'padrao' => $pergunta['padrao'] ?? null,
+                    'ajuda' => $pergunta['ajuda'] ?? null,
+                    'opcoes' => $pergunta['opcoes'] ?? null,
+                ];
+            }, $classe::perguntas());
+
+            $catalogo[] = ['codigo' => $codigo, 'nome' => $classe::nome(), 'campos' => $campos];
+        }
+
+        return $catalogo;
+    }
+
+    /** $clienteId: cliente em nome de quem a chamada e feita (so para o historico de chamadas). */
+    public static function criar(CredencialTransportadora $credencial, ?string $clienteId = null): Transportadora
     {
         $classe = self::LISTA[$credencial->transportadora]
             ?? throw new InvalidArgumentException('Transportadora desconhecida: '.$credencial->transportadora);
 
-        return new $classe($credencial, app(ClienteHttp::class), $sellerId);
+        return new $classe($credencial, app(ClienteHttp::class), $clienteId);
     }
 
     /**
-     * Servicos contratados que o seller cadastrou na configuracao: [['codigo' => '3', 'nome' => 'Package'], ...]
+     * Servicos contratados que o cliente cadastrou na configuracao: [['codigo' => '3', 'nome' => 'Package'], ...]
      * devolvidos como ['3' => 'Package'].
      */
     public static function servicosDaConfiguracao(array $configuracao): array

@@ -25,7 +25,7 @@ use Throwable;
 class ClienteHttp
 {
     /** Envia uma chamada. Devolve a resposta, ou null se nao houve resposta (timeout, conexao). */
-    public function enviar(?string $sellerId, string $transportadora, string $operacao, array $pedido): ?Response
+    public function enviar(?string $clienteId, string $transportadora, string $operacao, array $pedido): ?Response
     {
         $inicio = microtime(true);
 
@@ -33,12 +33,12 @@ class ClienteHttp
             $resposta = $this->preparar(Http::withOptions([]), $pedido)
                 ->send($pedido['metodo'], $pedido['url'], $this->opcoes($pedido));
         } catch (ConnectionException $e) {
-            $this->registrar($sellerId, $transportadora, $operacao, $pedido, null, $inicio, 'sem_resposta');
+            $this->registrar($clienteId, $transportadora, $operacao, $pedido, null, $inicio, 'sem_resposta');
 
             return null;
         }
 
-        $this->registrar($sellerId, $transportadora, $operacao, $pedido, $resposta, $inicio);
+        $this->registrar($clienteId, $transportadora, $operacao, $pedido, $resposta, $inicio);
 
         return $resposta;
     }
@@ -49,7 +49,7 @@ class ClienteHttp
      * @param  array  $pedidos  lista de ['transportadora' => 'jadlog', 'pedido' => [...]] ; a chave de cada item precisa ser unica
      * @return array  [chave => Response|null]
      */
-    public function enviarEmParalelo(?string $sellerId, string $operacao, array $pedidos): array
+    public function enviarEmParalelo(?string $clienteId, string $operacao, array $pedidos): array
     {
         $inicio = microtime(true);
 
@@ -69,7 +69,7 @@ class ClienteHttp
             $resposta = $respostas[$chave] ?? null;
             $resposta = $resposta instanceof Response ? $resposta : null; // excecao de conexao => sem resposta
 
-            $this->registrar($sellerId, $item['transportadora'], $operacao, $item['pedido'], $resposta, $inicio, $resposta === null ? 'sem_resposta' : null);
+            $this->registrar($clienteId, $item['transportadora'], $operacao, $item['pedido'], $resposta, $inicio, $resposta === null ? 'sem_resposta' : null);
             $saida[$chave] = $resposta;
         }
 
@@ -105,13 +105,13 @@ class ClienteHttp
         return $opcoes;
     }
 
-    private function registrar(?string $sellerId, string $transportadora, string $operacao, array $pedido, ?Response $resposta, float $inicio, ?string $erro = null): void
+    private function registrar(?string $clienteId, string $transportadora, string $operacao, array $pedido, ?Response $resposta, float $inicio, ?string $erro = null): void
     {
         try {
             $corpoResposta = $resposta?->body();
 
             ChamadaTransportadora::create([
-                'seller_id' => $sellerId,
+                'cliente_id' => $clienteId,
                 'transportadora' => $transportadora,
                 'operacao' => $operacao,
                 'metodo' => $pedido['metodo'],

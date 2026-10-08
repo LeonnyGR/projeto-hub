@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Models\ClienteApi;
 use App\Models\CredencialTransportadora;
 use Illuminate\Support\Facades\DB;
 
@@ -28,7 +27,7 @@ function responderJadlog($comando, array $mudar = [])
         'Conta corrente Jadlog (Enter se nao for correntista)' => '',
         'Numero do contrato (Enter se nao tiver)' => '',
         'Codigo da unidade (franquia) emissora (Enter se nao souber)' => '',
-        'Tipo de coleta: K = Jadlog coleta no seller, S = seller leva ate a Jadlog' => 'K',
+        'Tipo de coleta: K = Jadlog coleta no lojista, S = o lojista leva ate a Jadlog' => 'K',
         'Modalidades contratadas, no formato codigo:nome,codigo:nome (ex.: 3:Package,0:Expresso)' => '3:Package, 0:Expresso',
     ];
 
@@ -84,12 +83,11 @@ it('cadastra os Correios', function () {
         ->and($cred->configuracao['servicos'][0])->toEqual(['codigo' => '03220', 'nome' => 'SEDEX']);
 });
 
-it('o que foi cadastrado vale para os sellers e aparece na consulta da API sem segredo', function () {
+it('o que foi cadastrado vale para os clientes e aparece na consulta da API sem segredo', function () {
     [$cliente, $chave] = $this->criarCliente('B2C');
     responderJadlog($this->artisan('transportadora:configurar', ['transportadora' => 'jadlog']))->assertSuccessful();
-    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => true]);
 
-    $this->postJson($this->urlDoSeller($seller, '/cotacoes'), $this->dadosDeCotacao(), $this->auth($chave))
+    $this->postJson('/api/v1/cotacoes', $this->dadosDeCotacao(), $this->auth($chave))
         ->assertCreated()->assertJsonPath('data.falhas', []);
 
     $r = $this->getJson('/api/v1/transportadoras', $this->auth($chave))->assertOk();
@@ -102,7 +100,7 @@ it('recusa dados invalidos e nao salva nada', function () {
     responderJadlog($this->artisan('transportadora:configurar', ['transportadora' => 'jadlog']), [
         'Tomador: CNPJ' => '11222333000182', // digito verificador errado
         'Tomador: UF' => 'XX',
-        'Tipo de coleta: K = Jadlog coleta no seller, S = seller leva ate a Jadlog' => 'Z',
+        'Tipo de coleta: K = Jadlog coleta no lojista, S = o lojista leva ate a Jadlog' => 'Z',
     ])->assertFailed();
 
     expect($cliente->credenciais()->count())->toBe(0);
@@ -143,7 +141,7 @@ it('recusa transportadora desconhecida e cliente inexistente', function () {
     $this->artisan('transportadora:configurar', ['transportadora' => 'jadlog', 'cliente' => '00000000-0000-0000-0000-000000000000'])->assertFailed();
 });
 
-it('com mais de um cliente da API, o id e obrigatorio', function () {
+it('com mais de um cliente, o id e obrigatorio', function () {
     [$a] = $this->criarCliente('B2C A');
     $this->criarCliente('B2C B');
 
@@ -155,18 +153,17 @@ it('com mais de um cliente da API, o id e obrigatorio', function () {
 
 it('ativar e desativar uma transportadora sem redigitar as credenciais', function () {
     [$cliente, $chave] = $this->criarCliente('B2C');
-    $seller = $cliente->sellers()->create(['nome' => 'Loja', 'cep_origem' => '01310100', 'ativo' => true]);
-    $this->configurarJadlog($seller);
-    $this->configurarCorreios($seller);
+    $this->configurarJadlog($cliente);
+    $this->configurarCorreios($cliente);
 
     $this->artisan('transportadora:ativar', ['transportadora' => 'jadlog', '--desativar' => true])->assertSuccessful();
 
-    $r = $this->postJson($this->urlDoSeller($seller, '/cotacoes'), $this->dadosDeCotacao(), $this->auth($chave))->assertCreated();
+    $r = $this->postJson('/api/v1/cotacoes', $this->dadosDeCotacao(), $this->auth($chave))->assertCreated();
     expect(collect($r->json('data.opcoes'))->pluck('transportadora')->unique()->all())->toBe(['correios']);
     expect($cliente->credenciais()->where('transportadora', 'jadlog')->first()->credenciais['token'])->toBe('token-jadlog'); // credenciais intactas
 
     $this->artisan('transportadora:ativar', ['transportadora' => 'jadlog'])->assertSuccessful();
-    $r = $this->postJson($this->urlDoSeller($seller, '/cotacoes'), $this->dadosDeCotacao(), $this->auth($chave))->assertCreated();
+    $r = $this->postJson('/api/v1/cotacoes', $this->dadosDeCotacao(), $this->auth($chave))->assertCreated();
     expect(collect($r->json('data.opcoes'))->pluck('transportadora')->unique()->sort()->values()->all())->toBe(['correios', 'jadlog']);
 });
 

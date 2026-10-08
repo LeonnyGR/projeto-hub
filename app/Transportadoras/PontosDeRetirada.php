@@ -15,7 +15,7 @@ interface PontosDeRetirada
      * Pontos de retirada perto de um CEP.
      *
      * @param  string  $cep   8 digitos
-     * @param  ?string $tipos tipos separados por virgula, como o seller informou (ex.: "LOCKER,PUBLICO").
+     * @param  ?string $tipos tipos separados por virgula, como o cliente informou (ex.: "LOCKER,PUBLICO").
      *                        Cada transportadora usa os tipos que conhece e ignora os outros; vazio = todos.
      * @return array  lista de ['id', 'nome', 'tipo_codigo', 'logradouro', 'numero', 'bairro', 'cidade', 'uf', 'cep', 'latitude', 'longitude']
      *

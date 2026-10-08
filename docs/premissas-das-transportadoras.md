@@ -16,7 +16,7 @@ ou olhando o catálogo dos Correios (CWS) com uma conta de homologação.
 - **Confirmar com:** Jadlog (contrato).
 
 ### 2. Modalidades da Jadlog
-- **O que supomos:** o PDF cita "tabela 2" de modalidades, mas ela não está no arquivo. Quem cadastra o seller informa os códigos contratados (`3:Package,0:Expresso`).
+- **O que supomos:** o PDF cita "tabela 2" de modalidades, mas ela não está no arquivo. Quem cadastra o contrato (o cliente) informa os códigos contratados (`3:Package,0:Expresso`).
 - **Exemplo:** se o contrato tem a modalidade `5` e o cadastro diz `3`, a Jadlog recusa o item e a cotação sai sem essa opção.
 - **Confirmar com:** Jadlog.
 
@@ -40,24 +40,24 @@ ou olhando o catálogo dos Correios (CWS) com uma conta de homologação.
 - **Todos os volumes de uma remessa Jadlog têm o mesmo código.**
 
 ### 7. Jadlog: quem é o tomador
-- **O que fazemos:** o tomador (quem paga o frete) é sempre o **titular do contrato**, ou seja, o B2C. Os dados dele (nome, documento, endereço, telefone) ficam no cadastro do contrato (`configuracao.tomador`, cadastrado com `transportadora:configurar jadlog`). O remetente e o expedidor são o seller.
-- **Exemplo:** devolução de uma compra: quem despacha é a cliente (Maria), o destino é a loja do seller, mas quem paga é a Bartofil. Por isso `tomador` = Bartofil, `exp` = Maria.
+- **O que fazemos:** o tomador (quem paga o frete) é sempre o **titular do contrato**, ou seja, o cliente que cadastrou a transportadora. Os dados dele (nome, documento, endereço, telefone) ficam no cadastro do contrato (`configuracao.tomador`, cadastrado por `PUT /transportadoras/jadlog` ou com `transportadora:configurar jadlog`). O remetente e o expedidor são o lojista que envia o pacote.
+- **Exemplo:** devolução de uma compra: quem despacha é a cliente (Maria), o destino é a loja do cliente, mas quem paga é o titular do contrato (o cliente). Por isso `tomador` = o cliente, `exp` = Maria.
 - **Confirmar com:** Jadlog. Um mesmo contrato pode ter remetentes (CNPJ/CPF) diferentes do tomador? Em marketplaces costuma poder, mas não está no PDF.
 
 ### 8. Jadlog: nota fiscal
 - **O que o PDF diz:** o grupo `dfe` (documento fiscal) é obrigatório.
-- **O que fazemos:** se o seller não informa nota, enviamos uma declaração de conteúdo manual (`tpDocumento = 0`, `nrDoc = DEC` + 8 caracteres do id), como o PDF orienta.
+- **O que fazemos:** se o cliente não informa nota, enviamos uma declaração de conteúdo manual (`tpDocumento = 0`, `nrDoc = DEC` + 8 caracteres do id), como o PDF orienta.
 
 ### 9. Jadlog: coleta (`tpColeta`)
-- **O que supomos:** `K` (a Jadlog coleta no remetente) por padrão. O seller pode configurar `S` (ele leva o pacote até a Jadlog). Devolução sempre usa `S`.
+- **O que supomos:** `K` (a Jadlog coleta no remetente) por padrão. O cliente pode configurar `S` (ele leva o pacote até a Jadlog). Devolução sempre usa `S`.
 - **Confirmar com:** Jadlog (qual é o combinado de vocês).
 
 ### 10. Correios: corpo da pré-postagem
 - **O que o PDF mostra:** só uma tela parcial do JSON (`codigoServico`, `codigoFormatoObjetoInformado`, `alturaInformada`, `larguraInformada`, `comprimentoInformado`, `diametroInformado`, `pesoCubico`, `pesoInformado`...) e a estrutura de `remetente`.
 - **O que enviamos:** `remetente`, `destinatario`, `codigoServico`, `codigoFormatoObjetoInformado`, peso e medidas. Para nota fiscal: `numeroNotaFiscal` e `chaveNFe` (nomes não confirmados).
-- **Risco:** o CWS pode exigir mais campos (por exemplo, declaração de conteúdo ou ciência de objeto proibido). Se a API recusar, o seller recebe `remessa_recusada` e o detalhe fica em `chamadas_transportadoras`.
+- **Risco:** o CWS pode exigir mais campos (por exemplo, declaração de conteúdo ou ciência de objeto proibido). Se a API recusar, o cliente recebe `remessa_recusada` e o detalhe fica em `chamadas_transportadoras`.
 - **Confirmar com:** CWS dos Correios, em homologação. É o item mais importante antes de usar em produção.
-- **Também confirmar:** o remetente de cada pré-postagem é o seller, mas o cartão de postagem é do B2C. Os Correios aceitam remetente diferente do titular do cartão?
+- **Também confirmar:** o remetente de cada pré-postagem é o lojista que envia, mas o cartão de postagem é do cliente (titular do contrato). Os Correios aceitam remetente diferente do titular do cartão?
 
 ### 11. Correios: número de rastreio da pré-postagem
 - **O que supomos:** a resposta traz `id` (`PR...`, que aparece no PDF) e `codigoObjeto` (o código de rastreio; não aparece no PDF).
@@ -87,5 +87,5 @@ ou olhando o catálogo dos Correios (CWS) com uma conta de homologação.
 
 ## Riscos que continuam abertos
 
-- **Timeout na criação.** Se a transportadora criar o pedido mas não responder a tempo, nós apagamos nossa reserva e o seller pode tentar de novo, o que **pode duplicar** o pedido na transportadora. A Jadlog permite enviarmos nosso próprio `shipmentId`, o que resolveria. Precisa de confirmação com a Jadlog.
+- **Timeout na criação.** Se a transportadora criar o pedido mas não responder a tempo, nós apagamos nossa reserva e o cliente pode tentar de novo, o que **pode duplicar** o pedido na transportadora. A Jadlog permite enviarmos nosso próprio `shipmentId`, o que resolveria. Precisa de confirmação com a Jadlog.
 - **Jadlog sem homologação.** Em modo `real`, criar remessa cria um pedido de verdade.

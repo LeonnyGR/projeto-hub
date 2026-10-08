@@ -18,7 +18,7 @@ it('GET /up responde sem consultar o banco', function () {
 });
 
 it('manda cabecalhos de seguranca e request_id em toda resposta', function () {
-    [$seller, $chave] = $this->criarSeller();
+    [$cliente, $chave] = $this->criarCliente();
 
     $r = $this->getJson('/api/v1/_teste/eu', $this->auth($chave));
 
@@ -58,7 +58,7 @@ it('erros seguem o formato padrao, com request_id e sem detalhes internos', func
 });
 
 it('erro inesperado vira 500 generico, sem stack trace nem mensagem interna', function () {
-    Route::middleware('api')->get('/api/v1/_teste/explode', fn () => throw new RuntimeException('segredo-interno: SELECT * FROM sellers'));
+    Route::middleware('api')->get('/api/v1/_teste/explode', fn () => throw new RuntimeException('segredo-interno: SELECT * FROM clientes'));
 
     $r = $this->getJson('/api/v1/_teste/explode');
 

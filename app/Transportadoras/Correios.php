@@ -39,6 +39,11 @@ class Correios implements Transportadora
         ];
     }
 
+    public static function nome(): string
+    {
+        return 'Correios';
+    }
+
     public static function perguntas(): array
     {
         return [
@@ -46,7 +51,8 @@ class Correios implements Transportadora
             ['campo' => 'credenciais.senha', 'rotulo' => 'Senha/codigo de acesso a API dos Correios', 'secreto' => true],
             ['campo' => 'credenciais.cartao_postagem', 'rotulo' => 'Numero do cartao de postagem', 'secreto' => true],
             ['campo' => 'configuracao.contrato', 'rotulo' => 'Numero do contrato (Enter se nao tiver)'],
-            ['campo' => 'configuracao.servicos', 'rotulo' => 'Servicos contratados, no formato codigo:nome,codigo:nome (ex.: 03220:SEDEX,04669:PAC)', 'tipo' => 'servicos'],
+            ['campo' => 'configuracao.servicos', 'rotulo' => 'Servicos contratados, no formato codigo:nome,codigo:nome (ex.: 03220:SEDEX,04669:PAC)', 'tipo' => 'servicos',
+                'titulo' => 'Servicos contratados', 'ajuda' => 'Lista de {codigo, nome}. Ex.: [{"codigo": "03220", "nome": "SEDEX"}, {"codigo": "04669", "nome": "PAC"}]'],
         ];
     }
 
@@ -60,8 +66,8 @@ class Correios implements Transportadora
     public function __construct(
         private readonly CredencialTransportadora $credencial,
         private readonly ClienteHttp $http,
-        // Seller em nome de quem estamos chamando (so para o historico de chamadas).
-        private readonly ?string $sellerId = null,
+        // Cliente em nome de quem estamos chamando (so para o historico de chamadas).
+        private readonly ?string $clienteId = null,
     ) {
     }
 
@@ -262,7 +268,7 @@ class Correios implements Transportadora
         $base = config('transportadoras.correios.url').'/prepostagem/v1/prepostagens/rotulo';
         $ids = array_column($remessa['volumes'], 'id_externo');
 
-        $pedido = $this->http->enviar($this->sellerId, 'correios', 'etiqueta', [
+        $pedido = $this->http->enviar($this->clienteId, 'correios', 'etiqueta', [
             'metodo' => 'POST',
             'url' => $base.'/assincrono/pdf',
             'headers' => $this->cabecalhosComToken(),
@@ -278,7 +284,7 @@ class Correios implements Transportadora
 
         // Tenta baixar algumas vezes: o PDF pode demorar um instante para ficar pronto.
         for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
-            $download = $this->http->enviar($this->sellerId, 'correios', 'etiqueta_download', [
+            $download = $this->http->enviar($this->clienteId, 'correios', 'etiqueta_download', [
                 'metodo' => 'GET',
                 'url' => $base.'/download/assincrono/'.$recibo,
                 'headers' => $this->cabecalhosComToken(),
@@ -317,7 +323,7 @@ class Correios implements Transportadora
             $corpo['chaveNFe'] = $doc['chave'] ?? null;
         }
 
-        $resposta = $this->http->enviar($this->sellerId, 'correios', 'criar_remessa', [
+        $resposta = $this->http->enviar($this->clienteId, 'correios', 'criar_remessa', [
             'metodo' => 'POST',
             'url' => config('transportadoras.correios.url').'/prepostagem/v1/prepostagens',
             'headers' => $this->cabecalhosComToken(),
@@ -350,7 +356,7 @@ class Correios implements Transportadora
 
     private function cancelarPrePostagem(string $id): void
     {
-        $resposta = $this->http->enviar($this->sellerId, 'correios', 'cancelar_remessa', [
+        $resposta = $this->http->enviar($this->clienteId, 'correios', 'cancelar_remessa', [
             'metodo' => 'DELETE',
             'url' => config('transportadoras.correios.url').'/prepostagem/v1/prepostagens/'.$id,
             'headers' => $this->cabecalhosComToken(),
@@ -420,7 +426,7 @@ class Correios implements Transportadora
         ];
     }
 
-    /** ['03220' => 'SEDEX', '04669' => 'PAC'] a partir da configuracao do seller. */
+    /** ['03220' => 'SEDEX', '04669' => 'PAC'] a partir da configuracao do cliente. */
     private function servicos(): array
     {
         return Transportadoras::servicosDaConfiguracao($this->credencial->configuracao);
@@ -468,7 +474,7 @@ class Correios implements Transportadora
 
         $c = $this->credencial->credenciais;
 
-        $resposta = $this->http->enviar($this->sellerId, 'correios', 'token', [
+        $resposta = $this->http->enviar($this->clienteId, 'correios', 'token', [
             'metodo' => 'POST',
             'url' => config('transportadoras.correios.url').'/token/v1/autentica/cartaopostagem',
             'basic' => [(string) ($c['usuario'] ?? ''), (string) ($c['senha'] ?? '')],

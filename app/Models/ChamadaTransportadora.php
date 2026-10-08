@@ -15,7 +15,7 @@ class ChamadaTransportadora extends Model
     protected $table = 'chamadas_transportadoras';
 
     protected $fillable = [
-        'seller_id', 'transportadora', 'operacao', 'metodo', 'url', 'requisicao', 'resposta',
+        'cliente_id', 'transportadora', 'operacao', 'metodo', 'url', 'requisicao', 'resposta',
         'status_http', 'duracao_ms', 'erro', 'request_id',
     ];
 }

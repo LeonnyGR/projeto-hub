@@ -20,14 +20,17 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Limites por minuto. Cada seller tem o proprio contador (um seller nao atrapalha o outro).
-     * Rotas sem seller (CEP, cadastro) contam por cliente da API.
+     * Limites por minuto. Cada cliente tem o proprio contador (um cliente nao atrapalha o outro).
      * Os valores ficam em config/frete.php.
      */
     private function definirLimitesDeRequisicao(): void
     {
-        $quem = fn (Request $r) => $r->attributes->get('seller')?->id ?? $r->attributes->get('cliente_api')?->id ?? $r->ip();
+        $quem = fn (Request $r) => $r->attributes->get('cliente')?->id ?? $r->ip();
 
+        // Login do portal: por e-mail + IP (dificulta adivinhar senha sem bloquear outras pessoas do mesmo cliente).
+        RateLimiter::for('login', fn (Request $r) => Limit::perMinute((int) config('frete.limites.login'))->by('login:'.(strtolower((string) $r->input('email')) ?: (string) $r->attributes->get('usuario')?->id).'|'.$r->ip()));
+        // Ver credenciais por inteiro: poucas por minuto, por usuario.
+        RateLimiter::for('revelar', fn (Request $r) => Limit::perMinute((int) config('frete.limites.revelar'))->by('revelar:'.$r->attributes->get('usuario')?->id));
         RateLimiter::for('cotacoes', fn (Request $r) => Limit::perMinute((int) config('frete.limites.cotacoes'))->by('cotacoes:'.$quem($r)));
         RateLimiter::for('remessas', fn (Request $r) => Limit::perMinute((int) config('frete.limites.remessas'))->by('remessas:'.$quem($r)));
         RateLimiter::for('cadastros', fn (Request $r) => Limit::perMinute((int) config('frete.limites.cadastros'))->by('cadastros:'.$quem($r)));

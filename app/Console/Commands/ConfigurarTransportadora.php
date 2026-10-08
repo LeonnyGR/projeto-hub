@@ -4,24 +4,24 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\SellerService;
+use App\Services\TransportadoraService;
 use App\Support\Pessoa;
 use App\Transportadoras\Transportadoras;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * Cadastra as credenciais e a configuracao do B2C com uma transportadora (token, cartao de postagem, tomador...).
+ * Cadastra as credenciais e a configuracao de um cliente com uma transportadora (token, cartao de postagem, tomador...).
  * Mesmo cadastro da API (PUT /transportadoras/{t}), para quem prefere o terminal.
  * O que se digita em campo secreto nao aparece na tela nem fica no historico do terminal.
  */
 class ConfigurarTransportadora extends ComandoDeCliente
 {
-    protected $signature = 'transportadora:configurar {transportadora : Codigo da transportadora, o mesmo usado na API} {cliente? : ID do cliente da API (opcional se so existir um)}';
+    protected $signature = 'transportadora:configurar {transportadora : Codigo da transportadora, o mesmo usado na API} {cliente? : id do cliente (opcional se so existir um)}';
 
-    protected $description = 'Cadastra (ou substitui) as credenciais do B2C com uma transportadora. Vale para todos os sellers';
+    protected $description = 'Cadastra (ou substitui) as credenciais de um cliente com uma transportadora';
 
-    public function handle(SellerService $service): int
+    public function handle(TransportadoraService $service): int
     {
         $codigo = (string) $this->argument('transportadora');
         $classe = Transportadoras::LISTA[$codigo] ?? null;
@@ -76,9 +76,9 @@ class ConfigurarTransportadora extends ComandoDeCliente
             return self::FAILURE;
         }
 
-        $service->configurarTransportadora($cliente, $codigo, $validador->validated());
+        $service->configurar($cliente, $codigo, $validador->validated());
 
-        $this->info("Transportadora '{$codigo}' configurada para '{$cliente->nome}'. Todos os sellers dele passam a usar estes dados.");
+        $this->info("Transportadora '{$codigo}' configurada para '{$cliente->nome}'. As cotacoes e remessas dele passam a usar estes dados.");
 
         return self::SUCCESS;
     }

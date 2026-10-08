@@ -10,13 +10,20 @@ use App\Models\Remessa;
 use App\Services\RemessaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class DevolucaoController extends Controller
 {
+    /** Lista as devolucoes do cliente (mais novas primeiro). Filtro opcional: ?status=criada */
+    public function index(Request $request): AnonymousResourceCollection
+    {
+        return RemessaResource::collection($this->remessasDoCliente($request, 'devolucao'));
+    }
+
     public function store(DevolucaoRequest $request, RemessaService $service): JsonResponse
     {
-        [$devolucao, $jaExistia] = $service->criarDevolucao($this->seller($request), $request->validated());
+        [$devolucao, $jaExistia] = $service->criarDevolucao($this->cliente($request), $request->validated());
 
         return (new RemessaResource($devolucao))->response()
             ->setStatusCode($jaExistia ? 200 : 201)
@@ -30,13 +37,13 @@ class DevolucaoController extends Controller
 
     public function etiqueta(Request $request, string $id, RemessaService $service): Response
     {
-        $pdf = $service->etiqueta($this->seller($request), $this->buscar($request, $id));
+        $pdf = $service->etiqueta($this->cliente($request), $this->buscar($request, $id));
 
         return response($pdf, 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => "inline; filename=\"etiqueta-devolucao-{$id}.pdf\""]);
     }
 
     private function buscar(Request $request, string $id): Remessa
     {
-        return $this->seller($request)->remessas()->where('tipo', 'devolucao')->findOrFail($id);
+        return $this->cliente($request)->remessas()->where('tipo', 'devolucao')->findOrFail($id);
     }
 }

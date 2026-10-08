@@ -13,7 +13,7 @@ return new class extends Migration
         // Envio e devolucao ficam na mesma tabela (coluna "tipo"): a devolucao e so uma remessa no sentido contrario.
         Schema::create('remessas', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('seller_id');
+            $table->uuid('cliente_id');
             $table->string('tipo', 10); // envio | devolucao
             $table->uuid('cotacao_id')->nullable();        // so no envio
             $table->uuid('remessa_origem_id')->nullable(); // so na devolucao
@@ -38,19 +38,19 @@ return new class extends Migration
             $table->timestampTz('cancelada_em')->nullable();
             $table->timestampsTz();
 
-            $table->foreign('seller_id')->references('id')->on('sellers')->cascadeOnDelete();
-            $table->unique(['seller_id', 'id']);
-            $table->foreign(['seller_id', 'cotacao_id'])->references(['seller_id', 'id'])->on('cotacoes');
-            $table->foreign(['seller_id', 'remessa_origem_id'])->references(['seller_id', 'id'])->on('remessas');
+            $table->foreign('cliente_id')->references('id')->on('clientes')->cascadeOnDelete();
+            $table->unique(['cliente_id', 'id']);
+            $table->foreign(['cliente_id', 'cotacao_id'])->references(['cliente_id', 'id'])->on('cotacoes');
+            $table->foreign(['cliente_id', 'remessa_origem_id'])->references(['cliente_id', 'id'])->on('remessas');
 
-            $table->unique(['seller_id', 'idempotency_key']);
+            $table->unique(['cliente_id', 'idempotency_key']);
             $table->index('codigo_rastreio');
-            $table->index(['seller_id', 'status']);
-            $table->index(['seller_id', 'created_at']);
-            $table->index('status'); // o rastreio varre as remessas ativas de todos os sellers
+            $table->index(['cliente_id', 'status']);
+            $table->index(['cliente_id', 'created_at']);
+            $table->index('status'); // o rastreio varre as remessas ativas de todos os clientes
         });
 
-        // Historico de rastreio. O acesso e sempre pela remessa (que ja e do seller).
+        // Historico de rastreio. O acesso e sempre pela remessa (que ja e do cliente).
         Schema::create('eventos_rastreio', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('remessa_id');

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Roda as migrations com a role dona do schema (DB_MIGRATION_*), num container descartavel.
 # Uso: docker/scripts/migrate.sh [argumentos do artisan migrate, ex.: --seed | --pretend]
-# Para outros comandos artisan (ex.: cliente:create) use docker/scripts/artisan.sh
+# Para outros comandos artisan (ex.: transportadora:configurar) use docker/scripts/artisan.sh
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 exige_docker

@@ -8,9 +8,9 @@ use App\Transportadoras\Transportadoras;
 
 class AtivarTransportadora extends ComandoDeCliente
 {
-    protected $signature = 'transportadora:ativar {transportadora : Codigo da transportadora, o mesmo usado na API} {cliente? : ID do cliente da API} {--desativar : Desativa em vez de ativar}';
+    protected $signature = 'transportadora:ativar {transportadora : Codigo da transportadora, o mesmo usado na API} {cliente? : id do cliente} {--desativar : Desativa em vez de ativar}';
 
-    protected $description = 'Ativa ou desativa uma transportadora ja cadastrada, sem mexer nas credenciais. Desativada, ela some das cotacoes de todos os sellers';
+    protected $description = 'Ativa ou desativa uma transportadora ja cadastrada, sem mexer nas credenciais. Desativada, ela some das cotacoes do cliente';
 
     public function handle(): int
     {

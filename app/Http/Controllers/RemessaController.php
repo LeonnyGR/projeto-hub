@@ -10,13 +10,20 @@ use App\Models\Remessa;
 use App\Services\RemessaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class RemessaController extends Controller
 {
+    /** Lista os envios do cliente (mais novos primeiro). Filtro opcional: ?status=criada */
+    public function index(Request $request): AnonymousResourceCollection
+    {
+        return RemessaResource::collection($this->remessasDoCliente($request, 'envio'));
+    }
+
     public function store(RemessaRequest $request, RemessaService $service): JsonResponse
     {
-        [$remessa, $jaExistia] = $service->criarEnvio($this->seller($request), $request->validated());
+        [$remessa, $jaExistia] = $service->criarEnvio($this->cliente($request), $request->validated());
 
         // Repeticao da mesma chamada: devolve a remessa que ja existe (200), sem criar outra.
         return (new RemessaResource($remessa))->response()
@@ -36,19 +43,19 @@ class RemessaController extends Controller
 
     public function cancelar(Request $request, string $id, RemessaService $service): RemessaResource
     {
-        return new RemessaResource($service->cancelar($this->seller($request), $this->buscar($request, $id)));
+        return new RemessaResource($service->cancelar($this->cliente($request), $this->buscar($request, $id)));
     }
 
     public function etiqueta(Request $request, string $id, RemessaService $service): Response
     {
-        $pdf = $service->etiqueta($this->seller($request), $this->buscar($request, $id));
+        $pdf = $service->etiqueta($this->cliente($request), $this->buscar($request, $id));
 
         return response($pdf, 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => "inline; filename=\"etiqueta-{$id}.pdf\""]);
     }
 
-    /** Parte do seller logado: remessa de outro seller da 404. */
+    /** Parte do cliente logado: remessa de outro cliente da 404. */
     private function buscar(Request $request, string $id): Remessa
     {
-        return $this->seller($request)->remessas()->where('tipo', 'envio')->findOrFail($id);
+        return $this->cliente($request)->remessas()->where('tipo', 'envio')->findOrFail($id);
     }
 }

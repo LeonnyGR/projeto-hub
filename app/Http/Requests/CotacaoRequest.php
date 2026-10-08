@@ -24,8 +24,8 @@ class CotacaoRequest extends ApiFormRequest
         $max = config('frete.entrada');
 
         return [
-            // Opcional: sem ele, vale o cep_origem cadastrado no seller.
-            'cep_origem' => ['nullable', 'string', 'regex:/^\d{8}$/'],
+            // CEP de onde o pacote sai: quem chama informa (o cliente pode despachar de varios lugares).
+            'cep_origem' => ['required', 'string', 'regex:/^\d{8}$/'],
             'cep_destino' => ['required', 'string', 'regex:/^\d{8}$/'],
             'valor_declarado_centavos' => ['required', 'integer', 'min:0', 'max:'.$max['max_valor_declarado_centavos']],
             'volumes' => ['required', 'array', 'min:1', 'max:'.$max['max_volumes']],

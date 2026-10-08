@@ -18,7 +18,7 @@ abstract class ApiFormRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true; // a rota ja exige seller autenticado
+        return true; // a rota ja exige cliente autenticado
     }
 
     public function after(): array

@@ -29,7 +29,7 @@ function dadosCorreios(int $volumes = 1): array
 }
 
 it('pega o token com Basic Auth e guarda no cache', function () {
-    $this->criarSeller(); // garante banco para o registro de chamadas
+    $this->criarCliente(); // garante banco para o registro de chamadas
 
     $pedidos = correios()->pedidosDeCotacao(dadosCorreios());
 
@@ -115,7 +115,7 @@ it('erro de validacao dos Correios (409 com msgs) vira falha sem_cobertura', fun
 });
 
 it('token recusado ao buscar o token vira credencial_invalida', function () {
-    $this->criarSeller();
+    $this->criarCliente();
 
     expect(fn () => correios('invalido')->pedidosDeCotacao(dadosCorreios()))
         ->toThrow(fn (TransportadoraIndisponivel $e) => expect($e->motivo)->toBe('credencial_invalida'));

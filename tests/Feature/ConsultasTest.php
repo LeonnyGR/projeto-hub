@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Models\ChamadaTransportadora;
 
 it('busca endereco pelo CEP no ViaCEP, sem precisar de transportadora configurada', function () {
-    [$seller, $chave] = $this->criarSeller(); // nenhuma transportadora cadastrada
+    [$cliente, $chave] = $this->criarCliente(); // nenhuma transportadora cadastrada
 
     $this->getJson('/api/v1/enderecos/01001-001', $this->auth($chave))
         ->assertOk()
@@ -16,7 +16,7 @@ it('busca endereco pelo CEP no ViaCEP, sem precisar de transportadora configurad
 });
 
 it('guarda o endereco no cache: a segunda consulta nao chama o ViaCEP', function () {
-    [$seller, $chave] = $this->criarSeller();
+    [$cliente, $chave] = $this->criarCliente();
 
     $this->getJson('/api/v1/enderecos/01001001', $this->auth($chave))->assertOk();
     $this->getJson('/api/v1/enderecos/01001001', $this->auth($chave))->assertOk();
@@ -26,7 +26,7 @@ it('guarda o endereco no cache: a segunda consulta nao chama o ViaCEP', function
 });
 
 it('CEP inexistente responde 404 e nao fica no cache', function () {
-    [$seller, $chave] = $this->criarSeller();
+    [$cliente, $chave] = $this->criarCliente();
 
     $this->getJson('/api/v1/enderecos/22222222', $this->auth($chave))
         ->assertStatus(404)->assertJsonPath('erro.codigo', 'cep_nao_encontrado');
@@ -36,14 +36,14 @@ it('CEP inexistente responde 404 e nao fica no cache', function () {
 });
 
 it('CEP com formato errado responde 422', function () {
-    [$seller, $chave] = $this->criarSeller();
+    [$cliente, $chave] = $this->criarCliente();
 
     $this->getJson('/api/v1/enderecos/123', $this->auth($chave))
         ->assertStatus(422)->assertJsonPath('erro.codigo', 'cep_invalido');
 });
 
 it('ViaCEP fora do ar: 502 com motivo, sem detalhes internos', function (string $cep, string $motivo) {
-    [$seller, $chave] = $this->criarSeller();
+    [$cliente, $chave] = $this->criarCliente();
 
     $r = $this->getJson("/api/v1/enderecos/{$cep}", $this->auth($chave))
         ->assertStatus(502)
@@ -58,9 +58,9 @@ it('ViaCEP fora do ar: 502 com motivo, sem detalhes internos', function (string 
 ]);
 
 it('lista pontos de retirada de quem oferece (hoje, a Jadlog), indicando de qual transportadora e cada ponto', function () {
-    [$seller, $chave] = $this->criarSellerComAsDuas();
+    [$cliente, $chave] = $this->criarClienteComAsDuas();
 
-    $r = $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031-100&tipos=LOCKER,JADLOG'), $this->auth($chave))->assertOk();
+    $r = $this->getJson('/api/v1/pontos-retirada?cep=02031-100&tipos=LOCKER,JADLOG', $this->auth($chave))->assertOk();
 
     expect($r->json('data'))->toHaveCount(1)
         ->and($r->json('data.0'))->toBe([
@@ -72,63 +72,63 @@ it('lista pontos de retirada de quem oferece (hoje, a Jadlog), indicando de qual
 });
 
 it('transportadora que nao oferece pontos de retirada (Correios) e ignorada na consulta geral', function () {
-    [$seller, $chave] = $this->criarSeller();
-    $this->configurarCorreios($seller);
-    $this->configurarJadlog($seller);
+    [$cliente, $chave] = $this->criarCliente();
+    $this->configurarCorreios($cliente);
+    $this->configurarJadlog($cliente);
 
-    $r = $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100'), $this->auth($chave))->assertOk();
+    $r = $this->getJson('/api/v1/pontos-retirada?cep=02031100', $this->auth($chave))->assertOk();
 
     expect(collect($r->json('data'))->pluck('transportadora')->unique()->all())->toBe(['jadlog'])->and($r->json('falhas'))->toBe([]);
 });
 
 it('pedir pontos de retirada de uma transportadora que nao oferece da 422', function () {
-    [$seller, $chave] = $this->criarSellerComAsDuas();
+    [$cliente, $chave] = $this->criarClienteComAsDuas();
 
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100&transportadora=correios'), $this->auth($chave))
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100&transportadora=correios', $this->auth($chave))
         ->assertStatus(422)->assertJsonPath('erro.codigo', 'recurso_nao_suportado');
 });
 
-it('filtrar por uma transportadora que o B2C nao cadastrou da 422', function () {
-    [$seller, $chave] = $this->criarSeller();
-    $this->configurarCorreios($seller);
+it('filtrar por uma transportadora que o cliente nao cadastrou da 422', function () {
+    [$cliente, $chave] = $this->criarCliente();
+    $this->configurarCorreios($cliente);
 
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100&transportadora=jadlog'), $this->auth($chave))
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100&transportadora=jadlog', $this->auth($chave))
         ->assertStatus(422)->assertJsonPath('erro.codigo', 'transportadora_nao_configurada');
 });
 
 it('sem nenhuma transportadora que ofereca pontos de retirada, responde 422', function () {
-    [$seller, $chave] = $this->criarSeller(); // nada cadastrado
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100'), $this->auth($chave))
+    [$cliente, $chave] = $this->criarCliente(); // nada cadastrado
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100', $this->auth($chave))
         ->assertStatus(422)->assertJsonPath('erro.codigo', 'sem_pontos_de_retirada');
 
-    $this->configurarCorreios($seller); // so Correios: tambem nao oferece
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100'), $this->auth($chave))
+    $this->configurarCorreios($cliente); // so Correios: tambem nao oferece
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100', $this->auth($chave))
         ->assertStatus(422)->assertJsonPath('erro.codigo', 'sem_pontos_de_retirada');
 });
 
 it('tipos que a transportadora nao conhece sao ignorados (usa todos)', function () {
-    [$seller, $chave] = $this->criarSeller();
-    $this->configurarJadlog($seller);
+    [$cliente, $chave] = $this->criarCliente();
+    $this->configurarJadlog($cliente);
     \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory());
     \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response(['pudos' => []], 200)]);
 
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100&tipos=QUALQUER'), $this->auth($chave))->assertOk();
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100&tipos=QUALQUER', $this->auth($chave))->assertOk();
 
     \Illuminate\Support\Facades\Http::assertSent(fn ($r) => str_contains($r->url(), 'pudos/location') && $r->data()['tipos'] === 'LOCKER,PUBLICO,JADLOG');
 });
 
 it('pontos de retirada: sem cobertura devolve lista vazia', function () {
-    [$seller, $chave] = $this->criarSeller();
-    $this->configurarJadlog($seller);
+    [$cliente, $chave] = $this->criarCliente();
+    $this->configurarJadlog($cliente);
 
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=22222222'), $this->auth($chave))->assertOk()->assertExactJson(['data' => [], 'falhas' => []]);
+    $this->getJson('/api/v1/pontos-retirada?cep=22222222', $this->auth($chave))->assertOk()->assertExactJson(['data' => [], 'falhas' => []]);
 });
 
 it('pontos de retirada: valida cep, transportadora e tipos', function (string $consulta, string $campo) {
-    [$seller, $chave] = $this->criarSeller();
-    $this->configurarJadlog($seller);
+    [$cliente, $chave] = $this->criarCliente();
+    $this->configurarJadlog($cliente);
 
-    $this->getJson($this->urlDoSeller($seller, "/pontos-retirada?{$consulta}"), $this->auth($chave))
+    $this->getJson("/api/v1/pontos-retirada?{$consulta}", $this->auth($chave))
         ->assertStatus(422)->assertJsonStructure(['erro' => ['detalhes' => [$campo]]]);
 })->with([
     'sem cep' => ['tipos=LOCKER', 'cep'],
@@ -139,10 +139,10 @@ it('pontos de retirada: valida cep, transportadora e tipos', function (string $c
 ]);
 
 it('uma transportadora com problema nao derruba a consulta: aparece em falhas', function () {
-    [$seller, $chave] = $this->criarSeller();
-    $this->configurarJadlog($seller, token: 'invalido');
+    [$cliente, $chave] = $this->criarCliente();
+    $this->configurarJadlog($cliente, token: 'invalido');
 
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100'), $this->auth($chave))
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100', $this->auth($chave))
         ->assertOk()->assertJsonPath('data', [])->assertJsonPath('falhas', [['transportadora' => 'jadlog', 'motivo' => 'credencial_invalida']]);
 });
 
@@ -175,9 +175,9 @@ it('GUARDA: nenhum codigo fora de app/Transportadoras cita Jadlog ou Correios (a
 });
 
 it('as consultas exigem autenticacao', function () {
-    [$seller] = $this->criarSeller();
+    [$cliente] = $this->criarCliente();
     $this->getJson('/api/v1/enderecos/01001001')->assertStatus(401);
-    $this->getJson($this->urlDoSeller($seller, '/pontos-retirada?cep=02031100'))->assertStatus(401);
+    $this->getJson('/api/v1/pontos-retirada?cep=02031100')->assertStatus(401);
 });
 
 it('por padrao o ViaCEP nao e simulado: a chamada segue para a internet de verdade', function () {

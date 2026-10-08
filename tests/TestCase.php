@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Models\ClienteApi;
+use App\Enums\PapelUsuario;
+use App\Models\Cliente;
 use App\Models\Cotacao;
 use App\Models\Remessa;
-use App\Models\Seller;
-use App\Services\ApiKeyService;
+use App\Models\Usuario;
+use App\Services\ChaveApiService;
+use App\Services\ClienteService;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
@@ -16,11 +18,6 @@ use Illuminate\Support\Facades\Route;
 
 abstract class TestCase extends BaseTestCase
 {
-    /** Cliente da API (o B2C) deste teste e a chave dele. Criados na primeira vez que um teste precisa. */
-    private ?ClienteApi $clienteDoTeste = null;
-
-    private ?string $chaveDoCliente = null;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -28,51 +25,63 @@ abstract class TestCase extends BaseTestCase
         // Redis limpo a cada teste (rate limit, cache).
         Redis::connection('default')->flushdb();
 
-        // Rotas de teste: servem para testar autenticacao, seller da URL e limite de requisicoes
-        // sem depender das rotas de negocio.
+        // Rota de teste: serve para testar autenticacao e limite de requisicoes sem depender das rotas de negocio.
         Route::middleware(['api', 'auth.cliente', 'throttle:cotacoes'])
-            ->get('/api/v1/_teste/eu', fn (Request $request) => response()->json(['cliente_id' => $request->attributes->get('cliente_api')->id]));
-        Route::middleware(['api', 'auth.cliente', 'seller.da.url', 'throttle:cotacoes'])
-            ->get('/api/v1/sellers/{seller}/_teste/eu', fn (Request $request) => response()->json(['seller_id' => $request->attributes->get('seller')->id]));
-    }
-
-    /** Cria um cliente da API (o sistema que chama, ex.: B2C). Devolve [ClienteApi, 'chave em texto']. */
-    public function criarCliente(string $nome = 'B2C Teste'): array
-    {
-        $resultado = app(ApiKeyService::class)->criarCliente($nome);
-
-        return [$resultado['cliente'], $resultado['chave']];
+            ->get('/api/v1/_teste/eu', fn (Request $request) => response()->json(['cliente_id' => $request->attributes->get('cliente')->id]));
     }
 
     /**
-     * Cria um seller do cliente da API do teste (ou de $cliente). Devolve [Seller, 'chave de API'].
-     * A chave e do cliente e e a MESMA para todos os sellers do teste (como na vida real:
-     * o B2C chamando em nome de varios sellers).
+     * Cria um cliente com um dono (adm_tenant) e uma chave de API. Devolve [Cliente, 'texto da chave de API'].
+     * O texto da chave vai direto em $this->auth().
      */
-    public function criarSeller(string $nome = 'Seller Teste', ?ClienteApi $cliente = null): array
+    public function criarCliente(string $nome = 'Cliente Teste', ?string $cnpj = null): array
     {
-        if ($this->clienteDoTeste === null) {
-            [$this->clienteDoTeste, $this->chaveDoCliente] = $this->criarCliente();
+        [$cliente] = app(ClienteService::class)->criar($nome, $cnpj ?? $this->cnpjNovo(), [
+            'nome' => 'Dono de '.$nome,
+            'email' => 'dono-'.uniqid().'@exemplo.com.br',
+            'password' => 'senha-do-dono-123',
+        ]);
+        [, $chave] = app(ChaveApiService::class)->criar($cliente, 'teste');
+
+        return [$cliente, $chave];
+    }
+
+    /** Cria um usuario do portal (senha 'senha-de-teste-123'). Papel: adm_tenant ou operador_tenant. */
+    public function criarUsuario(Cliente $cliente, PapelUsuario $papel = PapelUsuario::OperadorTenant, string $email = null): Usuario
+    {
+        return $cliente->usuarios()->create([
+            'nome' => 'Usuario '.$papel->value,
+            'email' => $email ?? uniqid().'@exemplo.com.br',
+            'password' => 'senha-de-teste-123',
+            'papel' => $papel,
+            'ativo' => true,
+        ]);
+    }
+
+    /** CNPJ valido e diferente a cada chamada (os clientes tem CNPJ unico). */
+    public function cnpjNovo(): string
+    {
+        $base = str_pad((string) random_int(10_000_000, 99_999_999), 8, '0', STR_PAD_LEFT).'0001';
+
+        foreach ([[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]] as $pesos) {
+            $soma = 0;
+            foreach ($pesos as $i => $peso) {
+                $soma += (int) $base[$i] * $peso;
+            }
+            $resto = $soma % 11;
+            $base .= $resto < 2 ? 0 : 11 - $resto;
         }
 
-        $cliente ??= $this->clienteDoTeste;
-
-        return [$cliente->sellers()->create(['nome' => $nome, 'cep_origem' => '01310100', 'ativo' => true]), $this->chaveDoCliente];
+        return $base;
     }
 
-    /** URL de uma rota do seller: /api/v1/sellers/{id}/caminho */
-    public function urlDoSeller(Seller $seller, string $caminho = ''): string
-    {
-        return '/api/v1/sellers/'.$seller->id.$caminho;
-    }
-
-    /** Header de autenticacao para a chave. */
+    /** Header de autenticacao com a chave de API. */
     public function auth(string $chave): array
     {
         return ['Authorization' => 'Bearer '.$chave];
     }
 
-    /** Tomador do frete (quem paga) nos contratos de teste: o B2C. Diferente do seller, de proposito. */
+    /** Tomador do frete (quem paga) nos contratos de teste. */
     public function tomadorDoContrato(): array
     {
         return [
@@ -81,10 +90,10 @@ abstract class TestCase extends BaseTestCase
         ];
     }
 
-    /** Contrato do B2C com a Jadlog (3 modalidades). O contrato e do cliente da API: vale para todos os sellers dele. */
-    public function configurarJadlog(Seller $seller, string $token = 'token-jadlog'): void
+    /** Contrato do cliente com a Jadlog (3 modalidades). */
+    public function configurarJadlog(Cliente $cliente, string $token = 'token-jadlog'): void
     {
-        $seller->clienteApi->credenciais()->updateOrCreate(['transportadora' => 'jadlog'], [
+        $cliente->credenciais()->updateOrCreate(['transportadora' => 'jadlog'], [
             'ativa' => true,
             'credenciais' => ['token' => $token],
             'configuracao' => [
@@ -99,12 +108,12 @@ abstract class TestCase extends BaseTestCase
         ]);
     }
 
-    /** Contrato do B2C com os Correios (SEDEX e PAC). */
-    public function configurarCorreios(Seller $seller, string $usuario = 'usuario-correios'): void
+    /** Contrato do cliente com os Correios (SEDEX e PAC). */
+    public function configurarCorreios(Cliente $cliente, string $usuario = 'usuario-correios'): void
     {
-        $seller->clienteApi->credenciais()->updateOrCreate(['transportadora' => 'correios'], [
+        $cliente->credenciais()->updateOrCreate(['transportadora' => 'correios'], [
             'ativa' => true,
-            'credenciais' => ['usuario' => $usuario, 'senha' => 'senha', 'cartao_postagem' => '0012345678'],
+            'credenciais' => ['usuario' => $usuario, 'senha' => 'senha-secreta-dos-correios', 'cartao_postagem' => '0012345678'],
             'configuracao' => [
                 'servicos' => [
                     ['codigo' => '03220', 'nome' => 'SEDEX'],
@@ -114,20 +123,20 @@ abstract class TestCase extends BaseTestCase
         ]);
     }
 
-    /** Seller com Jadlog e Correios configurados. Devolve [Seller, 'chave']. */
-    public function criarSellerComAsDuas(string $nome = 'Loja'): array
+    /** Cliente com Jadlog e Correios configurados. Devolve [Cliente, 'chave de API']. */
+    public function criarClienteComAsDuas(string $nome = 'Loja'): array
     {
-        [$seller, $chave] = $this->criarSeller($nome);
-        $this->configurarJadlog($seller);
-        $this->configurarCorreios($seller);
+        [$cliente, $credenciais] = $this->criarCliente($nome);
+        $this->configurarJadlog($cliente);
+        $this->configurarCorreios($cliente);
 
-        return [$seller, $chave];
+        return [$cliente, $credenciais];
     }
 
     /** Cotacao salva direto no banco, com opcoes prontas (para testar remessas em qualquer CEP de destino). */
-    public function criarCotacaoComOpcoes(Seller $seller, string $cepDestino = '20040020'): Cotacao
+    public function criarCotacaoComOpcoes(Cliente $cliente, string $cepDestino = '20040020'): Cotacao
     {
-        return $seller->cotacoes()->create([
+        return $cliente->cotacoes()->create([
             'cep_origem' => '01310100',
             'cep_destino' => $cepDestino,
             'requisicao' => $this->dadosDeCotacao(['cep_destino' => $cepDestino]),
@@ -153,7 +162,7 @@ abstract class TestCase extends BaseTestCase
             'servico_codigo' => $servico,
             'numero_pedido' => 'PED-1001',
             'remetente' => [
-                'nome' => 'Loja do Seller Ltda', 'documento' => '11222333000181', 'telefone' => '1133334444', 'email' => 'contato@loja.com.br',
+                'nome' => 'Loja do Joao Ltda', 'documento' => '11222333000181', 'telefone' => '1133334444', 'email' => 'contato@loja.com.br',
                 'endereco' => ['cep' => $cotacao->cep_origem, 'logradouro' => 'Avenida Paulista', 'numero' => '1000', 'complemento' => 'Sala 5', 'bairro' => 'Bela Vista', 'cidade' => 'Sao Paulo', 'uf' => 'SP'],
             ],
             'destinatario' => [
@@ -164,9 +173,9 @@ abstract class TestCase extends BaseTestCase
     }
 
     /** Header Idempotency-Key + autenticacao. */
-    public function comChave(string $chaveApi, ?string $idempotencia = null): array
+    public function comChave(string $credenciais, ?string $idempotencia = null): array
     {
-        return $this->auth($chaveApi) + ['Idempotency-Key' => $idempotencia ?? 'chave-'.uniqid()];
+        return $this->auth($credenciais) + ['Idempotency-Key' => $idempotencia ?? 'chave-'.uniqid()];
     }
 
     /** Corpo valido de cotacao (1 volume). */
@@ -180,9 +189,9 @@ abstract class TestCase extends BaseTestCase
         ], $mudar);
     }
 
-    public function criarCotacao(Seller $seller): Cotacao
+    public function criarCotacao(Cliente $cliente): Cotacao
     {
-        return $seller->cotacoes()->create([
+        return $cliente->cotacoes()->create([
             'cep_origem' => '01310100',
             'cep_destino' => '20040020',
             'requisicao' => ['volumes' => []],
@@ -191,9 +200,9 @@ abstract class TestCase extends BaseTestCase
         ]);
     }
 
-    public function criarRemessa(Seller $seller, Cotacao $cotacao): Remessa
+    public function criarRemessa(Cliente $cliente, Cotacao $cotacao): Remessa
     {
-        return $seller->remessas()->create([
+        return $cliente->remessas()->create([
             'tipo' => 'envio',
             'cotacao_id' => $cotacao->id,
             'idempotency_key' => 'chave-'.uniqid(),

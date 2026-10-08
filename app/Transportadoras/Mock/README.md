@@ -15,7 +15,7 @@ fazem a chamada HTTP e leem a resposta). A única coisa falsa é a resposta da i
 
 O cenário vem do **CEP de destino** (da cotação, do destinatário da remessa ou do CEP consultado).
 
-| CEP de destino | O que acontece | O que o seller vê |
+| CEP de destino | O que acontece | O que o cliente vê |
 |---|---|---|
 | qualquer outro CEP | Sucesso. Uma opção por serviço configurado | Opções com valor e prazo |
 | `22222222` | Sem cobertura. Jadlog devolve o erro do PDF (`error.id` -1 na cotação, `erro.id` -2 ao criar remessa). Correios devolve 409 (cotação e criação). Consulta de CEP (ViaCEP): `{"erro": true}`. Pontos de retirada: lista vazia | Cotação: falha `sem_cobertura`. Remessa: erro 422 `remessa_recusada`. CEP: 404 |

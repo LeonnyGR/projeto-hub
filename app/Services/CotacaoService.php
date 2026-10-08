@@ -6,7 +6,7 @@ namespace App\Services;
 
 use App\Exceptions\ErroDeNegocio;
 use App\Models\Cotacao;
-use App\Models\Seller;
+use App\Models\Cliente;
 use App\Transportadoras\ClienteHttp;
 use App\Transportadoras\TransportadoraIndisponivel;
 use App\Transportadoras\Transportadoras;
@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Cota o frete em todas as transportadoras ativas do seller, ao mesmo tempo.
+ * Cota o frete em todas as transportadoras ativas do cliente, ao mesmo tempo.
  * Se uma transportadora falhar, as outras continuam: a cotacao sai so com quem respondeu
  * e a falha aparece em "falhas".
  */
@@ -24,18 +24,13 @@ class CotacaoService
     {
     }
 
-    /** @param array $dados cep_origem (opcional), cep_destino, valor_declarado_centavos, volumes[] (ja validados) */
-    public function cotar(Seller $seller, array $dados): Cotacao
+    /** @param array $dados cep_origem, cep_destino, valor_declarado_centavos, volumes[] (ja validados) */
+    public function cotar(Cliente $cliente, array $dados): Cotacao
     {
-        $seller->exigirAtivo();
-
-        // Sem CEP na cotacao, sai do CEP cadastrado no seller.
-        $dados['cep_origem'] ??= $seller->cep_origem;
-
-        $credenciais = $seller->credenciais()->where('ativa', true)->get();
+        $credenciais = $cliente->credenciais()->where('ativa', true)->get();
 
         if ($credenciais->isEmpty()) {
-            throw new ErroDeNegocio('sem_transportadoras', 'Nenhuma transportadora configurada para este seller.', 422);
+            throw new ErroDeNegocio('sem_transportadoras', 'Nenhuma transportadora configurada.', 422);
         }
 
         // 1. Cada transportadora descreve as chamadas que precisa fazer.
@@ -45,7 +40,7 @@ class CotacaoService
 
         foreach ($credenciais as $credencial) {
             try {
-                $transportadora = Transportadoras::criar($credencial, $seller->id);
+                $transportadora = Transportadoras::criar($credencial, $cliente->id);
 
                 foreach ($transportadora->pedidosDeCotacao($dados) as $pedido) {
                     $pedidos[$transportadora->codigo().':'.$pedido['chave']] = [
@@ -61,7 +56,7 @@ class CotacaoService
         }
 
         // 2. Todas as chamadas saem juntas (cada uma com timeout de poucos segundos).
-        $respostas = $pedidos === [] ? [] : $this->http->enviarEmParalelo($seller->id, 'cotacao', $pedidos);
+        $respostas = $pedidos === [] ? [] : $this->http->enviarEmParalelo($cliente->id, 'cotacao', $pedidos);
 
         // 3. Cada transportadora le as proprias respostas.
         $opcoes = [];
@@ -87,7 +82,7 @@ class CotacaoService
         usort($opcoes, fn (array $a, array $b) => [$a['valor_centavos'], $a['prazo_dias'] ?? PHP_INT_MAX]
             <=> [$b['valor_centavos'], $b['prazo_dias'] ?? PHP_INT_MAX]);
 
-        return $seller->cotacoes()->create([
+        return $cliente->cotacoes()->create([
             'cep_origem' => $dados['cep_origem'],
             'cep_destino' => $dados['cep_destino'],
             'requisicao' => $dados,
@@ -96,14 +91,14 @@ class CotacaoService
         ]);
     }
 
-    /** Falha mostrada ao seller: so o codigo da transportadora e um motivo curto e seguro. */
+    /** Falha mostrada ao cliente: so o codigo da transportadora e um motivo curto e seguro. */
     private function falha(string $transportadora, Throwable $e): array
     {
         if ($e instanceof TransportadoraIndisponivel) {
             return ['transportadora' => $transportadora, 'motivo' => $e->motivo];
         }
 
-        // Bug nosso: vai para o log, e o seller ve so "erro_interno".
+        // Bug nosso: vai para o log, e o cliente ve so "erro_interno".
         Log::error('Erro inesperado ao cotar', ['transportadora' => $transportadora, 'erro' => $e::class, 'mensagem' => $e->getMessage()]);
 
         return ['transportadora' => $transportadora, 'motivo' => 'erro_interno'];

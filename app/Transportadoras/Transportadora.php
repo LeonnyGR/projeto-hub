@@ -21,14 +21,22 @@ interface Transportadora
     public static function regras(): array;
 
     /**
-     * Perguntas que o comando `transportadora:configurar` faz, na ordem. Cada item:
+     * Os campos de cadastro desta transportadora, na ordem. Servem ao comando `transportadora:configurar` (perguntas)
+     * e ao formulario do portal (GET /transportadoras/catalogo). Cada item:
      *  - campo:   onde o valor entra ("credenciais.token", "configuracao.tomador.nome"...);
-     *  - rotulo:  o texto da pergunta;
+     *  - rotulo:  o texto da pergunta no terminal;
      *  - secreto: true = o que for digitado nao aparece na tela;
-     *  - padrao:  resposta usada quando se aperta Enter (opcional);
-     *  - tipo:    'servicos' = lista "codigo:nome,codigo:nome" (opcional).
+     *  - padrao:  valor usado quando nada e informado (opcional);
+     *  - tipo:    'servicos' = lista de servicos contratados; 'select' = escolha entre 'opcoes' (opcional);
+     *  - titulo:  nome do campo no formulario do portal, quando o rotulo do terminal nao servir (opcional);
+     *  - ajuda:   dica para o formulario (opcional);
+     *  - opcoes:  ['K' => 'texto', ...] para tipo 'select' (opcional).
+     * Se o campo e obrigatorio ou nao, o catalogo descobre sozinho em regras() (nao repita aqui).
      */
     public static function perguntas(): array;
+
+    /** Nome para mostrar nas telas: 'Jadlog', 'Correios'. */
+    public static function nome(): string;
 
     /** Codigo usado na API e no banco: 'jadlog', 'correios'. */
     public function codigo(): string;

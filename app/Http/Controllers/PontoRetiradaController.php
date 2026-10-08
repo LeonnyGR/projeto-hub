@@ -13,7 +13,7 @@ class PontoRetiradaController extends Controller
     public function index(PontoRetiradaRequest $request, ConsultasService $consultas): JsonResponse
     {
         [$pontos, $falhas] = $consultas->pontosDeRetirada(
-            $this->seller($request),
+            $this->cliente($request),
             $request->validated('cep'),
             $request->validated('tipos'),
             $request->validated('transportadora'),

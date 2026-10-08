@@ -24,7 +24,7 @@ CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS;
 --    * migrator: dono do schema; roda as migrations (DDL). Usada so por docker/scripts/migrate.sh.
 --    * app     : runtime da API/worker; so DML. BYPASSRLS porque aqui ela faz o papel do "service_role"
 --                do Supabase: o RLS fecha as portas anon/authenticated, nao a aplicacao. O isolamento
---                entre sellers e feito na aplicacao (global scope + testes).
+--                entre clientes e feito na aplicacao (toda consulta parte do cliente logado + testes).
 -- ---------------------------------------------------------------------------------------------
 CREATE ROLE :"mig_user" LOGIN PASSWORD :'mig_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE :"app_user" LOGIN PASSWORD :'app_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;

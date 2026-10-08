@@ -14,14 +14,14 @@ class CotacaoController extends Controller
 {
     public function store(CotacaoRequest $request, CotacaoService $service): JsonResponse
     {
-        $cotacao = $service->cotar($this->seller($request), $request->validated());
+        $cotacao = $service->cotar($this->cliente($request), $request->validated());
 
         return (new CotacaoResource($cotacao))->response()->setStatusCode(201);
     }
 
     public function show(Request $request, string $id): CotacaoResource
     {
-        // Parte sempre do seller logado: cotacao de outro seller da 404.
-        return new CotacaoResource($this->seller($request)->cotacoes()->findOrFail($id));
+        // Parte sempre do cliente logado: cotacao de outro cliente da 404.
+        return new CotacaoResource($this->cliente($request)->cotacoes()->findOrFail($id));
     }
 }

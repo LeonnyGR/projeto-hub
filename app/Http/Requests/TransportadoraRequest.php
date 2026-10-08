@@ -8,7 +8,7 @@ use App\Support\Pessoa;
 use App\Transportadoras\Transportadoras;
 
 /**
- * Cadastrar/substituir (PUT) ou ligar/desligar (PATCH) uma transportadora do B2C.
+ * Cadastrar/editar (PUT) ou ligar/desligar (PATCH) uma transportadora do cliente.
  * As regras de PUT vem da propria transportadora (Jadlog::regras(), Correios::regras()).
  */
 class TransportadoraRequest extends ApiFormRequest
@@ -21,6 +21,12 @@ class TransportadoraRequest extends ApiFormRequest
             $configuracao['tomador'] = Pessoa::normalizar($configuracao['tomador']);
             $this->merge(['configuracao' => $configuracao]);
         }
+
+        // Ao editar, campo de credencial em branco significa "nao mudar": o formulario mostra o valor mascarado
+        // (o segredo nunca volta pela API) e so manda o que a pessoa digitou de novo.
+        if ($this->jaCadastrada() && is_array($this->input('credenciais'))) {
+            $this->merge(['credenciais' => array_filter($this->input('credenciais'), fn ($valor) => $valor !== null && $valor !== '')]);
+        }
     }
 
     public function rules(): array
@@ -31,9 +37,14 @@ class TransportadoraRequest extends ApiFormRequest
 
         $regras = Transportadoras::LISTA[$this->route('transportadora')]::regras();
 
-        // Ao editar, quem nao manda "credenciais" mantem as que ja estao salvas (o segredo nunca volta pela API).
-        if (! $this->has('credenciais') && $this->jaCadastrada()) {
-            $regras = array_filter($regras, fn ($regra, $campo) => ! str_starts_with($campo, 'credenciais'), ARRAY_FILTER_USE_BOTH);
+        // Ao editar, as credenciais sao opcionais, inclusive campo a campo: o que nao vier mantem o valor salvo.
+        // (No primeiro cadastro todas continuam obrigatorias.)
+        if ($this->jaCadastrada()) {
+            foreach ($regras as $campo => $regra) {
+                if (str_starts_with($campo, 'credenciais')) {
+                    $regras[$campo] = array_map(fn ($item) => $item === 'required' ? 'sometimes' : $item, $regra);
+                }
+            }
         }
 
         return $regras + ['ativa' => ['sometimes', 'boolean']];
@@ -41,6 +52,6 @@ class TransportadoraRequest extends ApiFormRequest
 
     public function jaCadastrada(): bool
     {
-        return $this->attributes->get('cliente_api')->credenciais()->where('transportadora', $this->route('transportadora'))->exists();
+        return $this->attributes->get('cliente')->credenciais()->where('transportadora', $this->route('transportadora'))->exists();
     }
 }
