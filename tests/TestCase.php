@@ -9,6 +9,7 @@ use App\Models\Cliente;
 use App\Models\Cotacao;
 use App\Models\Remessa;
 use App\Models\Usuario;
+use App\Models\UsuarioAplicacao;
 use App\Services\ChaveApiService;
 use App\Services\ClienteService;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
@@ -56,6 +57,32 @@ abstract class TestCase extends BaseTestCase
             'papel' => $papel,
             'ativo' => true,
         ]);
+    }
+
+    /** Libera ao usuario o que o mapa diz: ['OPE_02' => ['ver', 'etiqueta']]. Troca o que ele tinha. */
+    public function liberar(Usuario $usuario, array $mapa): Usuario
+    {
+        UsuarioAplicacao::where('usuario_id', $usuario->id)->delete();
+        foreach ($mapa as $aplicacao => $acoes) {
+            UsuarioAplicacao::create(['usuario_id' => $usuario->id, 'aplicacao_codigo' => $aplicacao, 'acoes' => $acoes]);
+        }
+
+        return $usuario;
+    }
+
+    /** O "dia a dia" de antes das permissoes: cotar, remessas, devolucoes e ver transportadoras (sem editar, sem ADM). */
+    public function liberarDiaADia(Usuario $usuario): Usuario
+    {
+        $mapa = [];
+        foreach (config('permissoes.modulos') as $codigo => $modulo) {
+            foreach ($modulo['aplicacoes'] as $app => $dados) {
+                if (in_array($codigo, ['COT', 'OPE', 'REV'], true)) {
+                    $mapa[$app] = $dados['acoes'];
+                }
+            }
+        }
+
+        return $this->liberar($usuario, $mapa + ['TRA_01' => ['ver']]);
     }
 
     /** CNPJ valido e diferente a cada chamada (os clientes tem CNPJ unico). */

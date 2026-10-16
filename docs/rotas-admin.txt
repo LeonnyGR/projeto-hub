@@ -1,0 +1,53 @@
+Rota prefixo Admin
+
+Passa por dois Middlewares : auth.admin e throttle:cadastros
+
+
+throttle:cadastros -> Trabalha com um recurso nativo do laravel, o ThrottleRequests, ao inicializar a aplicação do laravel, o boot() do AppServiceProvider chama o método definirLimitesDeRequisicao(), que é responsável por pegar o id do cliente, e no Singleton do RateLimiter guarda a chave cadastro e a clousure dele, quando a rota que tem o middleware é chamada o Laravel sabe que throttle é um alias de ThrottleRequests e esse mesmo chama o Singleton do RateLimiter procurando a chave cadastro e executando a closure dela, essa que define quantas requisições por minuto o usuário pode fazer naquelas rotas que tem esse middleware
+
+auth.admin -> esse alias está definido em app.php o alias pertence a classe AutenticaAdmin que faz uma validação da api-key, se errar mais que o limite o RateLimiter:hint() incrementa o número de tentativas até bloquear as requisições, o próprio libera as requisições depois de um tempo
+
+----------------------------------------------------------------------------------------------------------------------------------------  
+
+Cadastrar um cliente
+
+Rota: /clientes
+Método: POST
+ 
+Chama a controller : ClienteController método store
+
+O método store tem duas injeções de dependência, ClienteRequest e ClienteService. O ClienteService chama o método criar que pega os parâmetros retornados pelo validate do ClienteRequest. O cliente é criado na tabela Clientes e o Usuário é criado na tabela Usuários
+os dois são retornados pro método store que devolve pro usuário o Cliente formatado pelo ClienteResource e o Usuario pelo UsuarioResource
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+Buscar clientes
+
+Rota: /clientes
+Método: GET
+
+Chama a controller : ClienteController método index
+
+O método faz uma busca paginada de 50 clientes ordenado por nome e o ClienteResource chama o método estático collection do JsonResource que monta um array pra cada cliente. Só de ter o paginate o Laravel já traz links(link para a primeira e última página) e meta para os dados de paginação e a chave data com os dados dos clientes
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+Buscar um cliente específico
+
+Rota: /clientes/{id}
+Método: GET
+
+Chama a controller : ClienteController método show
+
+Na rota o parâmetro {id} deve ser do formato uuid, isso que o whereUuid faz, internamente ele tem um regex que só aceita esse formato, então no método show da Controller é chamado e o id é buscado através do método findOrFail do Eloquent que devolve um erro caso o cliente não for encontrado, se for então ClienteResource devolve o retorno formatado
+
+---------------------------------------------------------------------------------------------------------------------------------------------------
+
+Atualizar Cliente
+
+Rota: /clientes/{id}
+Método: PATCH
+
+Chama a controller : ClienteController método update
+
+Na rota o parâmetro {id} deve ser do formato uuid, isso que o whereUuid faz, internamente ele tem um regex que só aceita esse formato, então no método update da Controller é chamado e o id é buscado através do método findOrFail do Eloquent que devolve um erro caso o cliente não for encontrado, se for então dispara o método update pegando o validated do ClienteRequest (como o método é patch o request retorna regras para menos campos) e então o Cliente Resource devolve o retorno formatado

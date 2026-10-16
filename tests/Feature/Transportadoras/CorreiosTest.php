@@ -120,3 +120,24 @@ it('token recusado ao buscar o token vira credencial_invalida', function () {
     expect(fn () => correios('invalido')->pedidosDeCotacao(dadosCorreios()))
         ->toThrow(fn (TransportadoraIndisponivel $e) => expect($e->motivo)->toBe('credencial_invalida'));
 });
+
+it('quem espera o lock reaproveita o token que outra requisicao acabou de guardar', function () {
+    $this->criarCliente();
+    $antes = App\Models\ChamadaTransportadora::where('operacao', 'token')->count();
+
+    correios()->pedidosDeCotacao(dadosCorreios());
+    correios()->pedidosDeCotacao(dadosCorreios());
+
+    expect(App\Models\ChamadaTransportadora::where('operacao', 'token')->count())->toBe($antes + 1);
+});
+
+it('validarCredenciais ignora o token em cache e autentica de novo', function () {
+    $this->criarCliente();
+    Cache::put('correios_token:credencial-de-teste', 'token-velho', 600);
+    $antes = App\Models\ChamadaTransportadora::where('operacao', 'token')->count();
+
+    correios()->validarCredenciais();
+
+    expect(App\Models\ChamadaTransportadora::where('operacao', 'token')->count())->toBe($antes + 1)
+        ->and(Cache::get('correios_token:credencial-de-teste'))->not->toBe('token-velho');
+});

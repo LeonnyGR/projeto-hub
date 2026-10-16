@@ -1,0 +1,43 @@
+Rotas da API
+
+Middleware para todas as rotas: auth.cliente = Ele é definido no bootstrap/app.php, o alias faz referência a AutenticaCliente que está na pasta Middleware. Esse middleware primeiro verifica se você já errou a chave n vezes em um intervalo de x minutos, se não ele segue e como tem ChaveApiService injetado no construtor, chama o método autenticar passando o token, pois bearerToken pega exatamente o token da requisição. Dentro de autenticar o método separar é chamado para separar o prefixo e o segredo. Se passar nas validações então o prefixo é usando para buscar a linha da chave no banco. Então pegamos o sha256 do segredo armazenado na coluna hash_segredo , depois o conteúdo da variável segredo, transforma a variável segredo em um sha256 e então compara as duas através do método hash_equals(). Se a chave no banco não for nula, a comparação for verdadeira e a chave não tiver sido revoagada então passa para a próxima etapa que é encontrar o cliente pelo cliente_id da coluna da tabela de chave e ver se ele está ativo, se estiver tudo certo então grava o último uso da chave e retorna o cliente. Então no AutenticaCliente.php o cliente é atribuído nas próximas requests e também no contexto dos logs
+								
+								
+								
+Utiliza todas as rotas de $rotasDoDiaADia, $rotasDeConfiguracao
+
+
+
+Ver dados da conta
+
+Rota: /conta
+Método: GET
+
+Middleware throttle:cadastros -> Trabalha com um recurso nativo do laravel, o ThrottleRequests, ao inicializar a aplicação do laravel, o boot() do AppServiceProvider chama o método definirLimitesDeRequisicao(), que é responsável por pegar o id do cliente, e no Singleton do RateLimiter guarda a chave cadastro e a clousure dele, quando a rota que tem o middleware é chamada o Laravel sabe que throttle é um alias de ThrottleRequests e esse mesmo chama o Singleton do RateLimiter procurando a chave cadastro e executando a closure dela, essa que define quantas requisições por minuto o usuário pode fazer naquelas rotas que tem esse middleware
+
+Chama na controller ContaController o método show, como a ContaController estende Controller então o método cliente da controller pega os dados do cliente pelo attributes->get('cliente') já que esse atributo foi setado ao passar pelo AutenticaCliente.php e então devolve formatado através do ClienteResource
+
+
+
+
+Listar transportadoras do cliente
+
+Rota: /transportadoras
+Método: GET
+
+
+
+Middleware throttle:cadastros -> Trabalha com um recurso nativo do laravel, o ThrottleRequests, ao inicializar a aplicação do laravel, o boot() do AppServiceProvider chama o método definirLimitesDeRequisicao(), que é responsável por pegar o id do cliente, e no Singleton do RateLimiter guarda a chave cadastro e a clousure dele, quando a rota que tem o middleware é chamada o Laravel sabe que throttle é um alias de ThrottleRequests e esse mesmo chama o Singleton do RateLimiter procurando a chave cadastro e executando a closure dela, essa que define quantas requisições por minuto o usuário pode fazer naquelas rotas que tem esse middleware.
+
+Obs: O Middleware 'permite:TRA_01,ver' é executado mas como o atribusto do usuário não está setado ele não proíbe nada.
+
+Chama na controller TransportadoraController o método index. Como TransportadoraController estende Controller então o método chama o método cliente que devolve a Model Cliente, essa model tem o método credenciais() que bate na Model CredencialTransportadora que filtra na tabela credenciais transportadoras todas as transportadora que o cliente tem cadastrada pelo cliente_id, devolvendo isso pro método index, TransportadoraResource formata e devolve pra tela o retorno
+
+
+
+
+
+
+
+
+

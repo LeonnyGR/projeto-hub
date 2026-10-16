@@ -8,7 +8,9 @@ use App\Enums\PapelUsuario;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UsuarioRequest;
 use App\Http\Resources\UsuarioResource;
+use App\Services\PermissaoService;
 use App\Services\UsuarioService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -18,12 +20,21 @@ class UsuarioController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        return UsuarioResource::collection($this->cliente($request)->usuarios()->orderBy('nome')->get());
+        return UsuarioResource::collection($this->cliente($request)->usuarios()->with('permissoes')->orderBy('nome')->get());
     }
 
-    public function store(UsuarioRequest $request, UsuarioService $service): JsonResponse
+    /** Cria o operador. "permissoes" (opcional) ja libera as aplicacoes na criacao; sem ela o operador nao ve nada. */
+    public function store(UsuarioRequest $request, UsuarioService $service, PermissaoService $permissoes): JsonResponse
     {
-        $operador = $service->criarOperador($this->cliente($request), $request->validated());
+        $dados = $request->validated();
+
+        $operador = DB::transaction(function () use ($dados, $request, $service, $permissoes) {
+            $operador = $service->criarOperador($this->cliente($request), $dados);
+            $permissoes->definir($operador, $dados['permissoes'] ?? [], $request->attributes->get('usuario'));
+
+            return $operador;
+        });
+        $operador->load('permissoes');
 
         return (new UsuarioResource($operador))->response()->setStatusCode(201);
     }

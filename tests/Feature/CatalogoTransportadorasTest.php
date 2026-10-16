@@ -116,7 +116,7 @@ it('tipo_coleta da Jadlog e select com opcoes K e S e padrao K; servicos tem tip
 
 it('o operador tambem ve o catalogo no portal', function () {
     [$cliente] = $this->criarCliente();
-    $this->actingAs($this->criarUsuario($cliente, PapelUsuario::OperadorTenant), 'portal');
+    $this->actingAs($this->liberarDiaADia($this->criarUsuario($cliente, PapelUsuario::OperadorTenant)), 'portal');
 
     $this->getJson('/api/v1/portal/transportadoras/catalogo')->assertOk()->assertJsonCount(2, 'data');
 });

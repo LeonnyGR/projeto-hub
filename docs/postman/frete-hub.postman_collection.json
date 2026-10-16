@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Frete Hub",
-    "description": "API de frete (Jadlog e Correios), multi-tenant: cada cliente usa o proprio contrato com as transportadoras.\n\nExistem 3 portas de entrada:\n- Administracao (/api/v1/admin, so nos): Bearer {{admin_token}} (o ADMIN_API_TOKEN do .env do servidor).\n- Chave de API (/api/v1, backend do cliente): Bearer {{api_key}} (ja configurado na collection).\n- Portal (/api/v1/portal, pessoas do cliente): login com e-mail e senha; o Postman guarda o cookie de sessao sozinho.\n\nComo usar:\n1. Em Variables (aba da collection), preencha `base_url` e `admin_token`.\n2. Rode '0 - Administracao (so nos) > Criar cliente (com dono)': cria o cliente e o dono (usa `dono_email` e `dono_senha`; o e-mail e unico, troque se ja existir) e grava `cliente_id`.\n3. Rode 'Portal > Login (dono)' (o cookie fica guardado) e depois 'Portal > Criar chave de API': o texto da chave e gravado em `api_key` (aparece UMA vez na resposta).\n4. Rode as pastas na ordem: 1 Conta, 2 Transportadoras do cliente, 3 Consultas, 4 Cotacoes, 5 Remessas, 6 Devolucoes. As variaveis `cotacao_id`, `remessa_id` etc. se preenchem sozinhas.\n5. O CEP de origem nao fica no cadastro do cliente: informe `cep_origem` em cada cotacao.\nPara ver o 403: crie um operador (pasta Portal), faca 'Login (operador)' e tente 'Listar chaves de API'.",
+    "description": "API de frete (Jadlog e Correios), multi-tenant: cada cliente usa o proprio contrato com as transportadoras.\n\nExistem 3 portas de entrada:\n- Administracao (/api/v1/admin, so nos): Bearer {{admin_token}} (o ADMIN_API_TOKEN do .env do servidor).\n- Chave de API (/api/v1, backend do cliente): Bearer {{api_key}} (ja configurado na collection).\n- Portal (/api/v1/portal, pessoas do cliente): login com e-mail e senha; o Postman guarda o cookie de sessao sozinho.\n\nComo usar:\n1. Em Variables (aba da collection), preencha `base_url` e `admin_token`.\n2. Rode '0 - Administracao (so nos) > Criar cliente (com dono)': cria o cliente e o dono (usa `dono_email` e `dono_senha`; o e-mail e unico, troque se ja existir) e grava `cliente_id`.\n3. Rode 'Portal > Login (dono)' (o cookie fica guardado) e depois 'Portal > Criar chave de API': o texto da chave e gravado em `api_key` (aparece UMA vez na resposta).\n4. Rode as pastas na ordem: 1 Conta, 2 Transportadoras do cliente, 3 Consultas, 4 Cotacoes, 5 Remessas, 6 Devolucoes. As variaveis `cotacao_id`, `remessa_id` etc. se preenchem sozinhas.\n5. O CEP de origem nao fica no cadastro do cliente: informe `cep_origem` em cada cotacao.\nPara ver o 403: crie um operador (pasta Portal), faca 'Login (operador)' e tente 'Listar chaves de API'.\n\nPermissoes (portal): o dono pode tudo; o operador so o que foi liberado por aplicacao e acao (ver pasta Portal). Sem permissao: 403 `sem_permissao`. A chave de API nao usa essas permissoes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -379,7 +379,7 @@
                 "eu"
               ]
             },
-            "description": "Mostra o usuario logado e o cliente dele.",
+            "description": "Mostra o usuario logado, o cliente dele e o `menu`: so os modulos/aplicacoes que ele pode usar, com `caminho`, `icone` e as `acoes` de cada aplicacao. O dono recebe tudo (`acesso_total: true`).",
             "auth": {
               "type": "noauth"
             }
@@ -390,7 +390,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200', () => pm.response.to.have.status(200));"
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('Tem menu', () => pm.expect(d.menu).to.be.an('array'));",
+                  "pm.test('Dono ve todos os modulos', () => { if (d.acesso_total) pm.expect(d.menu.map(m => m.codigo)).to.eql(['COT','OPE','REV','TRA','ADM']); });"
                 ]
               }
             }
@@ -480,7 +483,7 @@
           ]
         },
         {
-          "name": "Criar chave de API (só dono)",
+          "name": "Criar chave de API (ADM_01)",
           "request": {
             "method": "POST",
             "header": [
@@ -532,7 +535,7 @@
           ]
         },
         {
-          "name": "Listar chaves de API (só dono)",
+          "name": "Listar chaves de API (ADM_01)",
           "request": {
             "method": "GET",
             "header": [],
@@ -566,7 +569,7 @@
           ]
         },
         {
-          "name": "Revogar chave de API (só dono)",
+          "name": "Revogar chave de API (ADM_01)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -601,7 +604,7 @@
           ]
         },
         {
-          "name": "Listar usuários (só dono)",
+          "name": "Listar usuários (ADM_02)",
           "request": {
             "method": "GET",
             "header": [],
@@ -617,7 +620,7 @@
                 "usuarios"
               ]
             },
-            "description": "Lista os usuarios do cliente (dono e operadores).",
+            "description": "Lista os usuarios do cliente. Cada operador vem com `permissoes`; o dono vem com `acesso_total: true`.",
             "auth": {
               "type": "noauth"
             }
@@ -635,7 +638,7 @@
           ]
         },
         {
-          "name": "Criar operador (só dono)",
+          "name": "Criar operador com permissões (ADM_02)",
           "request": {
             "method": "POST",
             "header": [
@@ -656,10 +659,10 @@
                 "usuarios"
               ]
             },
-            "description": "Cadastra um operador (operador_tenant). E-mail unico no sistema (guardado em minusculas); senha com 10+ caracteres. O script grava `operador_id`.",
+            "description": "Cadastra um operador (operador_tenant). E-mail unico no sistema (guardado em minusculas); senha com 10+ caracteres. `permissoes` (opcional) ja libera aplicacoes na criacao: `[{aplicacao, acoes}]`; sem ela o operador nasce sem nada (menu vazio). O script grava `operador_id`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nome\": \"Maria Operadora\",\n  \"email\": \"{{operador_email}}\",\n  \"password\": \"{{operador_senha}}\"\n}",
+              "raw": "{\n  \"nome\": \"Maria Operadora\",\n  \"email\": \"{{operador_email}}\",\n  \"password\": \"{{operador_senha}}\",\n  \"permissoes\": [\n    {\n      \"aplicacao\": \"COT_01\",\n      \"acoes\": [\n        \"criar\"\n      ]\n    },\n    {\n      \"aplicacao\": \"OPE_02\",\n      \"acoes\": [\n        \"ver\",\n        \"etiqueta\"\n      ]\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -679,14 +682,15 @@
                   "pm.test('Operador criado (201)', () => pm.response.to.have.status(201));",
                   "const d = pm.response.json().data;",
                   "pm.collectionVariables.set('operador_id', d.id);",
-                  "pm.test('Papel operador', () => pm.expect(d.papel).to.eql('operador_tenant'));"
+                  "pm.test('Papel operador', () => pm.expect(d.papel).to.eql('operador_tenant'));",
+                  "pm.test('Permissoes gravadas', () => pm.expect(d.permissoes.length).to.eql(2));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Atualizar operador: bloquear (só dono)",
+          "name": "Atualizar operador: bloquear (ADM_02)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -735,7 +739,7 @@
           ]
         },
         {
-          "name": "Atualizar operador: redefinir senha (só dono)",
+          "name": "Atualizar operador: redefinir senha (ADM_02)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -784,6 +788,180 @@
           ]
         },
         {
+          "name": "Catálogo de módulos e aplicações (ADM_02)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/permissoes/catalogo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "permissoes",
+                "catalogo"
+              ]
+            },
+            "description": "Modulos e aplicacoes com as acoes possiveis de cada uma. Serve para montar a grade de checkboxes da tela de permissoes.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('5 modulos', () => pm.expect(pm.response.json().data.length).to.eql(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver permissões do operador (ADM_02)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios/{{operador_id}}/permissoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios",
+                "{{operador_id}}",
+                "permissoes"
+              ]
+            },
+            "description": "O que o operador pode fazer hoje. Dono ou usuario de outro cliente = 404.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Definir permissões do operador (ADM_02)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios/{{operador_id}}/permissoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios",
+                "{{operador_id}}",
+                "permissoes"
+              ]
+            },
+            "description": "TROCA todas as permissoes do operador pelas enviadas (o que nao vier, ele perde; lista vazia = nada). 422 `permissao_invalida` se a aplicacao/acao nao existe; 403 `permissao_acima_do_proprio` se quem concede nao tem o que esta dando (o dono concede tudo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissoes\": [\n    {\n      \"aplicacao\": \"COT_01\",\n      \"acoes\": [\n        \"criar\"\n      ]\n    },\n    {\n      \"aplicacao\": \"COT_02\",\n      \"acoes\": [\n        \"ver\"\n      ]\n    },\n    {\n      \"aplicacao\": \"OPE_01\",\n      \"acoes\": [\n        \"criar\"\n      ]\n    },\n    {\n      \"aplicacao\": \"OPE_02\",\n      \"acoes\": [\n        \"ver\",\n        \"etiqueta\",\n        \"despachar\",\n        \"cancelar\"\n      ]\n    },\n    {\n      \"aplicacao\": \"TRA_01\",\n      \"acoes\": [\n        \"ver\"\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Gravou', () => pm.expect(pm.response.json().data.permissoes.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Permissão inválida (422)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/usuarios/{{operador_id}}/permissoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "usuarios",
+                "{{operador_id}}",
+                "permissoes"
+              ]
+            },
+            "description": "Aplicacao que nao existe no catalogo: 422 `permissao_invalida`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissoes\": [\n    {\n      \"aplicacao\": \"XXX_99\",\n      \"acoes\": [\n        \"ver\"\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));",
+                  "pm.test('Codigo', () => pm.expect(pm.response.json().erro.codigo).to.eql('permissao_invalida'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Login (operador)",
           "request": {
             "method": "POST",
@@ -805,7 +983,7 @@
                 "login"
               ]
             },
-            "description": "Entra como operador (o dono precisa ter criado e liberado o operador). Depois tente \"Listar chaves de API\": deve dar 403. Para voltar ao dono, rode \"Login (dono)\".",
+            "description": "Entra como operador. Depois rode \"Quem sou eu\" (o menu vem so com o que foi liberado) e tente \"Listar chaves de API\": deve dar 403 sem_permissao. Para voltar ao dono, rode \"Login (dono)\".",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{operador_email}}\",\n  \"password\": \"{{operador_senha}}\"\n}",
@@ -833,7 +1011,7 @@
           ]
         },
         {
-          "name": "Operador tenta listar chaves (403)",
+          "name": "Operador sem ADM_01 tenta listar chaves (403)",
           "request": {
             "method": "GET",
             "header": [],
@@ -849,7 +1027,7 @@
                 "chaves"
               ]
             },
-            "description": "Com o login de operador, a rota de dono responde 403 proibido.",
+            "description": "Com o login de operador sem a permissao ADM_01 `ver`, a rota responde 403 `sem_permissao` (com `detalhes.aplicacao` e `detalhes.acao`).",
             "auth": {
               "type": "noauth"
             }
@@ -860,7 +1038,42 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('403', () => pm.response.to.have.status(403));"
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('sem_permissao', () => pm.expect(pm.response.json().erro.codigo).to.eql('sem_permissao'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar cotações (portal, COT_02)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/portal/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portal",
+                "cotacoes"
+              ]
+            },
+            "description": "As cotacoes do cliente, mais novas primeiro (50 por pagina). Precisa de COT_02 `ver`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
                 ]
               }
             }
@@ -1612,6 +1825,36 @@
                   "    const v = r.data.opcoes.map(o => o.valor_centavos);",
                   "    pm.expect(v).to.eql([...v].sort((a, b) => a - b));",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar cotações",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cotacoes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cotacoes"
+              ]
+            },
+            "description": "As cotacoes do cliente, mais novas primeiro (50 por pagina)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
                 ]
               }
             }

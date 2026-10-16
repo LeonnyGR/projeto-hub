@@ -7,6 +7,7 @@ namespace App\Transportadoras;
 use App\Exceptions\ErroDeNegocio;
 use App\Models\CredencialTransportadora;
 use App\Support\Dinheiro;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
@@ -464,6 +465,18 @@ class Correios implements Transportadora
         Cache::forget($this->chaveDoToken());
     }
 
+    /**
+     * Confere usuario, senha e cartao de postagem autenticando de verdade nos Correios (ignora o token em cache).
+     * Usado ao cadastrar a credencial.
+     *
+     * @throws TransportadoraIndisponivel credencial_invalida, sem_resposta...
+     */
+    public function validarCredenciais(): void
+    {
+        $this->esquecerToken();
+        $this->token();
+    }
+
     /** Token valido (do cache, ou um novo). */
     private function token(): string
     {
@@ -471,6 +484,21 @@ class Correios implements Transportadora
         if (is_string($guardado)) {
             return $guardado;
         }
+
+        // Cotacao faz varias chamadas em paralelo: so uma autentica, as outras esperam e usam o token dela.
+        try {
+            return Cache::lock($this->chaveDoToken().':lock', 20)->block(15, function () {
+                $guardado = Cache::get($this->chaveDoToken());
+
+                return is_string($guardado) ? $guardado : $this->autenticar();
+            });
+        } catch (LockTimeoutException) {
+            throw new TransportadoraIndisponivel('sem_resposta', 'Tempo esgotado esperando a renovacao do token.');
+        }
+    }
+
+    private function autenticar(): string
+    {
 
         $c = $this->credencial->credenciais;
 

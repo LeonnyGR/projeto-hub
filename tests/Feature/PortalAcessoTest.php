@@ -16,6 +16,9 @@ function portalComPapel($teste, PapelUsuario $papel): array
 {
     [$cliente, $chave] = $teste->criarClienteComAsDuas();
     $usuario = $teste->criarUsuario($cliente, $papel);
+    if ($papel === PapelUsuario::OperadorTenant) {
+        $teste->liberarDiaADia($usuario); // operador so usa o que foi liberado
+    }
     $teste->actingAs($usuario, 'portal');
 
     return [$cliente, $chave, $usuario];
@@ -79,8 +82,8 @@ it('operador despacha e cancela remessa e cria devolucao pelo portal', function 
 it('operador recebe 403 em PUT e PATCH das transportadoras', function () {
     [$cliente] = portalComPapel($this, PapelUsuario::OperadorTenant);
 
-    $this->putJson('/api/v1/portal/transportadoras/jadlog', contratoJadlog($this))->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
-    $this->patchJson('/api/v1/portal/transportadoras/jadlog', ['ativa' => false])->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
+    $this->putJson('/api/v1/portal/transportadoras/jadlog', contratoJadlog($this))->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
+    $this->patchJson('/api/v1/portal/transportadoras/jadlog', ['ativa' => false])->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
 
     expect($cliente->credenciais()->where('transportadora', 'jadlog')->first()->ativa)->toBeTrue();
 });
@@ -141,7 +144,7 @@ function pelasDuasPortas($teste, $cliente, $chave, string $caminho): array
         'chave de API' => fn () => $teste->getJson("/api/v1/{$caminho}", $teste->auth($chave)),
         'portal' => function () use ($teste, $cliente, $caminho) {
             esquecerAutenticacao($teste);
-            $teste->actingAs($teste->criarUsuario($cliente, PapelUsuario::OperadorTenant), 'portal');
+            $teste->actingAs($teste->liberarDiaADia($teste->criarUsuario($cliente, PapelUsuario::OperadorTenant)), 'portal');
 
             return $teste->getJson("/api/v1/portal/{$caminho}");
         },

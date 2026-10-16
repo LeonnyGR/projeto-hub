@@ -147,3 +147,15 @@ it('exige credenciais e cada cliente so mexe nas proprias transportadoras', func
     $this->patchJson('/api/v1/transportadoras/jadlog', ['ativa' => false], $this->auth($chaveB))->assertStatus(404);
     expect($a->credenciais()->first()->ativa)->toBeTrue();
 });
+
+it('Correios com credencial recusada: 422 e nada fica salvo', function () {
+    [$cliente, $chave] = $this->criarCliente();
+    $dados = dadosDosCorreios();
+    $dados['credenciais']['usuario'] = 'invalido';
+
+    $this->putJson('/api/v1/transportadoras/correios', $dados, $this->auth($chave))
+        ->assertStatus(422)
+        ->assertJsonPath('erro.codigo', 'credencial_invalida');
+
+    expect($cliente->credenciais()->where('transportadora', 'correios')->exists())->toBeFalse();
+});

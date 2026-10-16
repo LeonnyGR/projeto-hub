@@ -10,6 +10,7 @@ use App\Http\Middleware\AutenticaPortal;
 use App\Http\Middleware\CabecalhosDeSeguranca;
 use App\Http\Middleware\ExigePapel;
 use App\Http\Middleware\ForcaJson;
+use App\Http\Middleware\PermiteAcao;
 use App\Http\Middleware\RequestId;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -47,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.admin' => AutenticaAdmin::class,
             'auth.portal' => AutenticaPortal::class,
             'papel' => ExigePapel::class,
+            'permite' => PermiteAcao::class,
         ]);
 
         // Rotas do portal: sao as unicas com cookie e sessao (a API de chave de API nao usa cookie).

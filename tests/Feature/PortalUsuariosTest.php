@@ -124,9 +124,9 @@ it('operador recebe 403 em listar, criar e alterar usuarios', function () {
     $outro = $this->criarUsuario($cliente, PapelUsuario::OperadorTenant);
     $this->actingAs($operador, 'portal');
 
-    $this->getJson('/api/v1/portal/usuarios')->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
-    $this->postJson('/api/v1/portal/usuarios', dadosDeOperador())->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
-    $this->patchJson("/api/v1/portal/usuarios/{$outro->id}", ['ativo' => false])->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
+    $this->getJson('/api/v1/portal/usuarios')->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
+    $this->postJson('/api/v1/portal/usuarios', dadosDeOperador())->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
+    $this->patchJson("/api/v1/portal/usuarios/{$outro->id}", ['ativo' => false])->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
 
     expect($outro->fresh()->ativo)->toBeTrue()->and(Usuario::where('email', 'maria@loja.com.br')->exists())->toBeFalse();
 });
@@ -139,7 +139,7 @@ it('sem login as rotas de usuarios dao 401', function () {
 it('o operador criado consegue logar e usar o dia a dia', function () {
     [$cliente] = portalComDono($this);
     $this->configurarJadlog($cliente);
-    $this->postJson('/api/v1/portal/usuarios', dadosDeOperador())->assertCreated();
+    $this->postJson('/api/v1/portal/usuarios', dadosDeOperador(['permissoes' => [['aplicacao' => 'COT_01', 'acoes' => ['criar']]]]))->assertCreated();
 
     // sai do "actingAs" do dono e entra de verdade como operador
     esquecerAutenticacao($this);

@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\PapelUsuario;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 /** Pessoa que entra no portal (e-mail e senha). Pertence a um cliente. */
@@ -34,6 +35,12 @@ class Usuario extends Authenticatable
     public function cliente(): BelongsTo
     {
         return $this->belongsTo(Cliente::class, 'cliente_id');
+    }
+
+    /** Permissoes do operador por aplicacao (o dono nao tem linhas: pode tudo). */
+    public function permissoes(): HasMany
+    {
+        return $this->hasMany(UsuarioAplicacao::class, 'usuario_id')->orderBy('aplicacao_codigo');
     }
 
     public function ehDono(): bool

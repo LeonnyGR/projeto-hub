@@ -82,9 +82,9 @@ it('operador nao lista, cria nem revoga chaves (403)', function () {
     $this->actingAs($this->criarUsuario($cliente, PapelUsuario::OperadorTenant), 'portal');
     $chave = $cliente->chaves()->firstOrFail();
 
-    $this->getJson('/api/v1/portal/chaves')->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
-    $this->postJson('/api/v1/portal/chaves', ['nome' => 'nova'])->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
-    $this->deleteJson("/api/v1/portal/chaves/{$chave->id}")->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
+    $this->getJson('/api/v1/portal/chaves')->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
+    $this->postJson('/api/v1/portal/chaves', ['nome' => 'nova'])->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
+    $this->deleteJson("/api/v1/portal/chaves/{$chave->id}")->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
 
     expect($cliente->chaves()->count())->toBe(1)->and($chave->fresh()->revogada_em)->toBeNull();
 });

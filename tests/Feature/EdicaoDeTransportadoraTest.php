@@ -126,7 +126,8 @@ it('no portal: o dono edita um campo e o operador so consulta', function () {
     $this->putJson('/api/v1/portal/transportadoras/correios', $dados)->assertOk();
     expect($cliente->credenciais()->first()->credenciais['senha'])->toBe('senha-nova-do-portal');
 
+    $this->liberarDiaADia($operador);
     $this->actingAs($operador, 'portal');
     $this->getJson('/api/v1/portal/transportadoras/correios')->assertOk();
-    $this->putJson('/api/v1/portal/transportadoras/correios', $dados)->assertStatus(403)->assertJsonPath('erro.codigo', 'proibido');
+    $this->putJson('/api/v1/portal/transportadoras/correios', $dados)->assertStatus(403)->assertJsonPath('erro.codigo', 'sem_permissao');
 });

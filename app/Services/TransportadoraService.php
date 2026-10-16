@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Exceptions\ErroDeNegocio;
 use App\Models\Cliente;
 use App\Models\CredencialTransportadora;
+use App\Transportadoras\Transportadoras;
+use App\Transportadoras\TransportadoraIndisponivel;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /** Cadastro das credenciais de um cliente com as transportadoras. */
@@ -32,7 +36,25 @@ class TransportadoraService
             }
         }
 
-        $credencial = $cliente->credenciais()->updateOrCreate(['transportadora' => $transportadora], $campos + ['ativa' => true]);
+        // Se a transportadora sabe conferir a credencial (Correios), conferimos antes de aceitar:
+        // credencial recusada desfaz o cadastro. Fora do ar, nao da para saber: salva e avisa no log.
+        $credencial = DB::transaction(function () use ($cliente, $transportadora, $campos) {
+            $credencial = $cliente->credenciais()->updateOrCreate(['transportadora' => $transportadora], $campos + ['ativa' => true]);
+
+            $integracao = Transportadoras::criar($credencial, $cliente->id);
+            if (method_exists($integracao, 'validarCredenciais')) {
+                try {
+                    $integracao->validarCredenciais();
+                } catch (TransportadoraIndisponivel $e) {
+                    if ($e->motivo === 'credencial_invalida') {
+                        throw new ErroDeNegocio('credencial_invalida', 'A transportadora recusou as credenciais informadas. Confira usuario, senha e cartao de postagem.', 422);
+                    }
+                    Log::warning('Credencial salva sem conferir', ['cliente_id' => $cliente->id, 'transportadora' => $transportadora, 'motivo' => $e->motivo]);
+                }
+            }
+
+            return $credencial;
+        });
 
         // O log diz o que mudou, nunca o conteudo (tem segredo).
         Log::info('Transportadora configurada', ['cliente_id' => $cliente->id, 'transportadora' => $transportadora]);

@@ -9,6 +9,7 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\TrocaSenhaRequest;
 use App\Http\Resources\UsuarioResource;
 use App\Models\Usuario;
+use App\Services\PermissaoService;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,13 +53,15 @@ class SessaoController extends Controller
         return response()->noContent();
     }
 
-    /** Quem esta logado e de qual cliente. */
-    public function eu(Request $request): JsonResponse
+    /** Quem esta logado, de qual cliente e o que pode ver e fazer (menu). */
+    public function eu(Request $request, PermissaoService $permissoes): JsonResponse
     {
         $usuario = $request->attributes->get('usuario');
 
         return response()->json(['data' => (new UsuarioResource($usuario))->toArray($request) + [
             'cliente' => ['id' => $usuario->cliente->id, 'nome' => $usuario->cliente->nome, 'cnpj' => $usuario->cliente->cnpj],
+            // Menu ja filtrado: so os modulos e aplicacoes que a pessoa pode usar, com as acoes de cada uma.
+            'menu' => $permissoes->menu($usuario),
         ]]);
     }
 

@@ -31,6 +31,10 @@ class UsuarioRequest extends ApiFormRequest
             'nome' => ['required', 'string', 'min:2', 'max:120'],
             'email' => ['required', 'email:rfc', 'max:190', Rule::unique('usuarios', 'email')],
             'password' => ['required', 'string', 'min:10', 'max:200'],
+            'permissoes' => ['sometimes', 'array', 'max:50'],
+            'permissoes.*.aplicacao' => ['required', 'string', 'max:12'],
+            'permissoes.*.acoes' => ['required', 'array', 'max:10'],
+            'permissoes.*.acoes.*' => ['required', 'string', 'max:20'],
         ];
     }
 }
